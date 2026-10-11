@@ -36,7 +36,10 @@ module ESP32
     #include "esp_adc/adc_cali.h"
     #include "string.h"
 
-    /* ---- battery (same 2:1 divider on GPIO2 = ADC1_CH0 as battery.rb) ---- */
+    /* ---- battery: GPIO2 = ADC1_CH2 on ESP32-C3 (NOT CH0; CH0 is GPIO0,
+       a floating Grove pin -- the M4 under-read bug: CH0 drifted ~1.1-1.3V
+       while the real divider output sat on CH2). Divider 2:1 (100k/100k),
+       same as battery.rb ---- */
     static adc_oneshot_unit_handle_t ws_adc_unit = NULL;
     static adc_cali_handle_t ws_adc_cali = NULL;
     static int ws_adc_inited = 0;
@@ -50,10 +53,10 @@ module ESP32
         adc_oneshot_chan_cfg_t chan = {
             .bitwidth = ADC_BITWIDTH_DEFAULT, .atten = ADC_ATTEN_DB_12,
         };
-        if (adc_oneshot_config_channel(ws_adc_unit, ADC_CHANNEL_0, &chan) != ESP_OK)
+        if (adc_oneshot_config_channel(ws_adc_unit, ADC_CHANNEL_2, &chan) != ESP_OK)
             return -2;
         adc_cali_curve_fitting_config_t cc = {
-            .unit_id = ADC_UNIT_1, .chan = ADC_CHANNEL_0,
+            .unit_id = ADC_UNIT_1, .chan = ADC_CHANNEL_2,
             .bitwidth = ADC_BITWIDTH_DEFAULT, .atten = ADC_ATTEN_DB_12,
         };
         adc_cali_create_scheme_curve_fitting(&cc, &ws_adc_cali); /* optional */
@@ -65,7 +68,7 @@ module ESP32
     int esp32_adc_read_mv(void) {
         if (!ws_adc_inited) return -1;
         int raw = -1;
-        if (adc_oneshot_read(ws_adc_unit, ADC_CHANNEL_0, &raw) != ESP_OK) return -2;
+        if (adc_oneshot_read(ws_adc_unit, ADC_CHANNEL_2, &raw) != ESP_OK) return -2;
         if (ws_adc_cali) {
             int mv = -1;
             if (adc_cali_raw_to_voltage(ws_adc_cali, raw, &mv) == ESP_OK) return mv;

@@ -1,7 +1,7 @@
 # app/battery.rb -- M3 demo 2: ADC input. Reads the 16340 battery voltage
 # from Ruby.
 #
-# T-OI Plus v1.2 battery sense: ADC1_CH0 on GPIO2, divider 2:1 (100k/100k),
+# T-OI Plus v1.2 battery sense: **ADC1_CH2** on GPIO2, divider 2:1 (100k/100k),
 # so full-scale at 3.3V VREF corresponds to ~6.6V at the cell. The ESP32-C3
 # has no FPU; spinel lowers Float to double in software, fine for voltage
 # math at this rate.
@@ -21,7 +21,8 @@ module ESP32
       static adc_oneshot_unit_handle_t sp_adc_unit = NULL;
       static adc_cali_handle_t sp_adc_cali = NULL;
     int esp32_adc_init(int pin) {
-        /* GPIO2 = ADC1_CH0 on ESP32-C3 */
+        /* GPIO2 = ADC1_CH2 on ESP32-C3 (CH0 is GPIO0). LilyGO's own
+           battery_voltage example uses BAT_ADC pin 2, divider x2. */
         adc_oneshot_unit_init_cfg_t unit = {
             .unit_id = ADC_UNIT_1,
             .ulp_mode = ADC_ULP_MODE_DISABLE,
@@ -32,13 +33,13 @@ module ESP32
             .bitwidth = ADC_BITWIDTH_DEFAULT,
             .atten = ADC_ATTEN_DB_12,
         };
-        e = adc_oneshot_config_channel(sp_adc_unit, pin == 2 ? ADC_CHANNEL_0 : ADC_CHANNEL_1, &chan);
+        e = adc_oneshot_config_channel(sp_adc_unit, pin == 2 ? ADC_CHANNEL_2 : ADC_CHANNEL_1, &chan);
         if (e != ESP_OK) return (int)e;
         /* Curves are per-atten; 12 dB gives ~0-2500mV usable. Calibration
            is optional on C3 -- fall back to raw if creation fails. */
         adc_cali_curve_fitting_config_t cfg = {
             .unit_id = ADC_UNIT_1,
-            .chan = pin == 2 ? ADC_CHANNEL_0 : ADC_CHANNEL_1,
+            .chan = pin == 2 ? ADC_CHANNEL_2 : ADC_CHANNEL_1,
             .bitwidth = ADC_BITWIDTH_DEFAULT,
             .atten = ADC_ATTEN_DB_12,
         };
@@ -52,7 +53,7 @@ module ESP32
         int raw = -1, mv = -1;
         if (sp_adc_unit == NULL) return -1;
         if (sp_adc_cali == NULL) return -2;
-        esp_err_t e = adc_oneshot_read(sp_adc_unit, ADC_CHANNEL_0, &raw);
+        esp_err_t e = adc_oneshot_read(sp_adc_unit, ADC_CHANNEL_2, &raw);
         if (e != ESP_OK) return -(int)e;
         e = adc_cali_raw_to_voltage(sp_adc_cali, raw, &mv);
         return (e == ESP_OK) ? mv : -(int)e;
@@ -62,7 +63,7 @@ module ESP32
     int esp32_adc_read_raw(void) {
         int raw = -1;
         if (sp_adc_unit == NULL) return -1;
-        esp_err_t e = adc_oneshot_read(sp_adc_unit, ADC_CHANNEL_0, &raw);
+        esp_err_t e = adc_oneshot_read(sp_adc_unit, ADC_CHANNEL_2, &raw);
         return (e == ESP_OK) ? raw : -(int)e;
     }
 
@@ -88,7 +89,7 @@ end
 DIVIDER = 2 # 100k/100k divider: cell = 2x pin voltage
 
 ESP32.esp32_adc_init(2)
-puts "Reading battery on GPIO2 (ADC1_CH0, divider 2:1, eFuse-calibrated):"
+puts "Reading battery on GPIO2 (ADC1_CH2, divider 2:1, eFuse-calibrated):"
 count = 0
 while count < 10
   mv = ESP32.esp32_adc_read_mv()
