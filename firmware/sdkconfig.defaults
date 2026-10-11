@@ -5,7 +5,10 @@
 # DRAM-payable 64 KB, and the RT's own allocator does the rest.
 
 # Stack for the main task (the Ruby body + full spinel RT frames).
-CONFIG_ESP_MAIN_TASK_STACK_SIZE=73728
+# M4: was 73728; 49152 frees 24 KB DRAM so esp_wifi can allocate its
+# stock 10/32 RX buffers (73728 starved malloc -> "Expected to init 10
+# rx buffer, actual is 8" -> driver abort).
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=49152
 
 # The Ruby body may loop (e.g. blink) -- the task watchdog on the "main"
 # task would otherwise reset the chip mid-run. Keep the watchdog for
@@ -16,3 +19,10 @@ CONFIG_ESP_TASK_WDT_EN=n
 # Newlib: the default BASIC printf keeps DRAM free; spinel's sp_puts*
 # paths go through putchar-level code, not printf floats.
 # (esp-console via UART0 is the default already.)
+
+# Wi-Fi RX buffers at IDF defaults (stock station example values).
+# M4 debugging: dropping to 6/16 (DRAM squeeze) correlated with assoc
+# failures (auth ok -> assoc req sent -> AP silent -> 0x400); stock
+# 10/32 connects in 2s on the same AP. Cost ~10 KB DRAM, we have room.
+CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=10
+CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM=32

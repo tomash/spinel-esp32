@@ -8,8 +8,14 @@
 # FreeRTOS do not provide.
 
 idf_component_register(
-    SRCS "sp_app_adapter.c" "app.c"
+    SRCS "sp_app_adapter.c" "sp_lwip_compat.c" "app.c"
     INCLUDE_DIRS "." "../../shim/esp32/include" "../../vendor/spinel/lib" "../../vendor/spinel/lib/regexp"
+    # M4: esp_wifi STA + nvs + netif + event loop + adc driver. The
+    # prebuilt RT archive cannot carry these; the app TU (FFI adapters)
+    # and the IDF link line resolve them here. (sp_lwip_compat.c is
+    # self-contained -- it needs no lwip headers -- but lwip stays a
+    # dependency: it provides the lwip_* symbols the compat TU calls.)
+    REQUIRES esp_wifi nvs_flash esp_netif esp_event esp_adc esp_driver_gpio lwip
 )
 
 # Link the prebuilt spinel RT after this component's objects. Imported
@@ -17,6 +23,35 @@ idf_component_register(
 # line does not resolve against the archive path -- pass the full path.
 target_link_libraries(${COMPONENT_LIB} PUBLIC
     ${CMAKE_CURRENT_LIST_DIR}/../../build/rt-riscv32/libspinel_rt_esp32.a)
+# The RT archive sits LAST on the IDF link line, after newlib/libc, so the
+# archive scan never loops back for symbols its objects reference (ld
+# scans left-to-right once). Two groups of late-reference victims:
+#   1. poll() lives only in libnewlib.a (newlib/src/poll.c, VFS-aware via
+#      select()); without an anchor the RT's poll references (sp_io.c/
+#      sp_sched.c/sp_cold.c) go unsatisfied. -u makes ld treat poll as
+#      undefined from the start, pulling poll.o from newlib's archive
+#      member regardless of scan order.
+#   2. sp_lwip_compat.c's POSIX wrappers (socket/bind/.../freeaddrinfo,
+#      lstat) live in libmain.a at position ~167 -- EARLY on the link
+#      line. The RT archive (~1267, LAST) references them, but when ld
+#      scanned libmain.a nothing needed them yet, so the member was
+#      skipped. Anchoring each name forces sp_lwip_compat.o extraction
+#      when libmain.a passes by. The wrappers in turn reference lwip_*
+#      symbols; lwip.a (position ~79) precedes libmain.a, so those need
+#      anchors too (they force sockets.c.obj/netdb.c.obj out of
+#      liblwip.a). Every anchor is satisfied by the first archive that
+#      defines the name; later archives are skipped, so the anchor adds
+#      no duplicate-symbol risk.
+foreach(_sym
+    poll socket bind listen accept connect shutdown setsockopt
+    getsockopt getsockname getpeername send sendto recv recvfrom
+    getaddrinfo freeaddrinfo lstat
+    lwip_socket lwip_bind lwip_listen lwip_accept lwip_connect
+    lwip_shutdown lwip_setsockopt lwip_getsockopt lwip_send
+    lwip_sendto lwip_recv lwip_recvfrom lwip_getaddrinfo
+    lwip_freeaddrinfo)
+    target_link_options(${COMPONENT_LIB} PUBLIC "-Wl,-u,${_sym}")
+endforeach()
 # spinel's header-heavy style trips unused-function warnings; IDF compiles
 # with -Werror=all by default, and -Wno-error cannot undo -Werror=all once
 # expanded. The RT archive was built -Wno-all for the same reason; the
