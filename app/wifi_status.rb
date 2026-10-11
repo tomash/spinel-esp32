@@ -6,6 +6,10 @@
 # main loop waits on poll(2) with a small timeout and serves at most
 # one request per tick, while also polling the ADC and the WiFi state.
 #
+# M4b: the index page links to /led/toggle, which flips the on-board
+# LED (GPIO3) and re-serves the index. LED state lives in this process;
+# the idle heartbeat blink is gone -- the endpoint owns the LED now.
+#
 # Two halves:
 #   * WiFi + ADC via the FFI DSL (same module shape as blink.rb /
 #     battery.rb): esp_wifi STA bring-up, esp_wifi_sta_get_ap_info for
@@ -249,7 +253,10 @@ def status_page(ssid, rssi, chan, ip, led, cell_v)
     <tr><td>RSSI</td><td>#{rssi_s} dBm</td></tr>
     <tr><td>Channel</td><td>#{chan}</td></tr>
     <tr><td>IP</td><td>#{ip}</td></tr>
-    </table></body></html>
+    </table>
+    <p><a href="/led/toggle" style="background:#eee;color:#111;padding:4px 12px;
+       text-decoration:none">Toggle LED (currently #{led_s})</a></p>
+    </body></html>
   HTML
 end
 
@@ -309,6 +316,15 @@ loop do
       ESP32.esp32_wifi_ip(ip_buf, 48)
       ip = ip_buf.delete("\0").strip
     end
+
+    # -- route: GET /led/toggle flips the LED; anything else serves index --
+    path = req.split(" ")[1].to_s
+    if path.start_with?("/led/toggle")
+      led = led == 1 ? 0 : 1
+      ESP32.esp32_led_write(LED_PIN, led)
+      puts "[#{loop_count}] LED toggled -> #{led}"
+    end
+
     mv = ESP32.esp32_adc_read_mv()
     cell_v = mv >= 0 ? ((mv * DIVIDER) / 1000.0).round(2) : 0.0
     body = status_page(ssid, rssi, chan, ip, led != 0, cell_v)
@@ -317,14 +333,11 @@ loop do
     client.write body
     client.close
     puts "[#{loop_count}] served: #{req.split("\r\n")[0]}"
-    led = led == 1 ? 0 : 1
-    ESP32.esp32_led_write(LED_PIN, led)
   end
 
-  # -- slow-poll housekeeping: blink the LED while idle --
+  # -- slow-poll housekeeping: log battery; LED no longer blinks -- the
+  #     toggle endpoint owns it now (state lives in this process) --
   if (loop_count % 50) == 0
-    led = led == 1 ? 0 : 1
-    ESP32.esp32_led_write(LED_PIN, led)
     mv = ESP32.esp32_adc_read_mv()
     if mv >= 0
       puts "[#{loop_count}] idle; cell #{((mv * DIVIDER) / 1000.0).round(2)}V"

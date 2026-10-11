@@ -21,9 +21,9 @@ libspinel_rt.a (built for riscv32, shimmed for FreeRTOS) ──┘
 3. The generated C + runtime + app FFI bindings link into one `.elf`, flash like any
    ESP-IDF app. Ruby code runs as a single FreeRTOS task owning all GC state.
 
-Status: the pipeline runs **on hardware**. Three Ruby demos (battery ADC, GPIO blink,
-I2C scan) compile from Ruby to C to firmware and run on a LilyGO T-OI Plus
-(ESP32-C3, RV32IMAC), verified over serial.
+Status: the pipeline runs **on hardware**. Four Ruby apps (battery ADC, GPIO blink,
+I2C scan, WiFi status server) compile from Ruby to C to firmware and run on a
+LilyGO T-OI Plus (ESP32-C3, RV32IMAC), verified over serial and over the network.
 
 ## Prerequisites
 
@@ -138,6 +138,7 @@ tools/build-app.sh app/blink.rb --target=esp32 --monitor  # + capture serial out
 | `app/blink.rb` | GPIO output | "Blink done... GPIO output from Ruby works" |
 | `app/battery.rb` | ADC + eFuse calibration | battery cell voltage, calibrated |
 | `app/i2c.rb` | I2C master bus | SDA=18/SCL=19 scan, device list |
+| `app/wifi_status.rb` | WiFi STA + TCP + HTTP from Ruby | scan, association, served requests |
 
 Details:
 
@@ -145,14 +146,23 @@ Details:
   FFI: configure + 10 on/off cycles with `nanosleep`. Verified: 10 blinks in 4.3 s,
   `main() returned 0`.
 - **`battery.rb`** — reads VBAT through the board's 2:1 divider (100k/100k on
-  GPIO2 = ADC1_CH0) using `adc_oneshot` + **eFuse curve-fitting calibration**
+  **GPIO2 = ADC1_CH2** on the C3 — not CH0, which is GPIO0 and floats) using
+  `adc_oneshot` + **eFuse curve-fitting calibration**
   (`adc_cali_create_scheme_curve_fitting` → `adc_cali_raw_to_voltage`).
   Naive `raw × 3300 / 4095` scaling over-reads by ~11–15% on ESP32-C3 (see
-  LilyGO issue #19); the calibrated path reads the actual cell voltage. On this
-  board the 16340 cell measures 1.33–1.36 V — deeply discharged, needs charging.
+  LilyGO issue #19); the calibrated path reads the actual cell voltage —
+  4.05–4.13 V here, matching the multimeter within ~30 mV.
 - **`i2c.rb`** — brings up the I2C master bus (SDA=18, SCL=19, 100 kHz) via
   `i2c_master` driver, scans all 112 addresses. T-OI Plus has no populated I2C
   peripherals, so "No I2C devices" is the healthy result.
+- **`wifi_status.rb`** — the M4 flagship. All-Ruby WiFi STA + web server:
+  `esp_wifi`/`esp_netif` via FFI adapters, spinel's built-in `TCPServer`
+  (`sp_net_listen_host` on lwip), and a **polling** loop — one non-blocking
+  `accept_nonblock` per tick, no threads, no blocking accept. Serves a status
+  page (LED, battery, SSID, RSSI, channel, IP) on `http://<board-ip>/`, with
+  `GET /led/toggle` to flip the on-board LED from a browser — state held in
+  the Ruby process. On the home AP it associates in ~10 ms and answers curl
+  from the LAN.
 
 ## Repo layout
 
@@ -168,9 +178,10 @@ vendor/       git submodules (spinel)
 
 ## Status
 
-See `docs/plan.md`. M0–M3 complete: host pipeline, cross runtime, and hardware
-demos (GPIO/ADC/I2C) all verified on the T-OI Plus. M4 (WiFi STA + web server in
-pure Ruby) in progress.
+See `docs/plan.md`. M0–M4 complete: host pipeline, cross runtime, hardware demos
+(GPIO/ADC/I2C), and WiFi STA + web server in pure Ruby — all verified on the
+T-OI Plus, including the `/led/toggle` endpoint over the LAN and calibrated
+battery voltage matching the multimeter.
 
 ## Constraints honored
 
