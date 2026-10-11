@@ -31,6 +31,17 @@
 #include <stdint.h>
 #include <sys/types.h>
 #include <signal.h>     /* the shim's own: struct sigaction, stack_t */
+#include <time.h>       /* struct timespec for nanosleep */
+
+/* FreeRTOS calls, forward-declared: this file is compiled into the RT
+ * archive by tools/build-rt.sh, whose include path is the shim + vendor
+ * headers only (no ESP-IDF).  The firmware link resolves these against
+ * libfreertos.a.  Tick contract hard-coded here matches the firmware's
+ * sdkconfig: CONFIG_FREERTOS_HZ=100, 16-bit ticks (ESP-IDF default).
+ * portTICK_PERIOD_MS = 1000 / 100 = 10. */
+extern void vTaskDelay(uint32_t ticks);
+extern uint32_t xTaskGetTickCount(void);
+
 
 /* ---- sys/mman.h ---- */
 void *mmap(void *addr, size_t len, int prot, int flags, int fd, long off) {
@@ -76,5 +87,32 @@ int getrusage(int who, void *ru) { (void)who; (void)ru; errno = ENOSYS; return -
 
 /* ---- priorities (Process.getpriority, sp_cold.c:990) ---- */
 int getpriority(int which, id_t who) { (void)which; (void)who; errno = ENOSYS; return -1; }
+
+/* ---- Kernel#sleep (sp_cold.c sp_sleep -> nanosleep): the one POSIX
+ * timer newlib-on-IDF does not provide.  Implemented on vTaskDelay:
+ * ticks are 10ms (Hz=100), rounding UP so a sub-tick sleep still
+ * yields one tick.  rem is only computed when the caller asks. */
+int nanosleep(const struct timespec *req, struct timespec *rem) {
+    if (req == NULL || req->tv_nsec < 0 || req->tv_nsec >= 1000000000L) {
+        return -1;
+    }
+    /* 64-bit ns -> ticks, round up; at most ~4294967 ticks (~49 days). */
+    int64_t ns = (int64_t)req->tv_sec * 1000000000L + (int64_t)req->tv_nsec;
+    uint32_t ticks = (uint32_t)((ns + 9999999L) / 10000000L); /* ceil(ns/10ms) */
+    if (ticks == 0) ticks = 1;
+    uint32_t start = xTaskGetTickCount();
+    vTaskDelay(ticks);
+    if (rem != NULL) {
+        uint32_t elapsed = (uint32_t)(xTaskGetTickCount() - start);
+        if (elapsed < ticks) {
+            int64_t left_ns = (int64_t)(ticks - elapsed) * 10000000L;
+            rem->tv_sec  = (time_t)(left_ns / 1000000000L);
+            rem->tv_nsec = (long)(left_ns % 1000000000L);
+        } else {
+            rem->tv_sec = 0; rem->tv_nsec = 0;
+        }
+    }
+    return 0;
+}
 
 #endif /* __ESP32_SHIM__ */

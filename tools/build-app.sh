@@ -1,25 +1,37 @@
 #!/bin/bash
-# tools/build-app.sh -- compile a Ruby app through spinel to native code (HOST path).
+# tools/build-app.sh -- compile a Ruby app through spinel to native code.
 #
-# Host-stage of the ESP32 pipeline: proves the Ruby -> C step and produces
-# the C we will later cross-compile. TARGET=esp32 changes only the cc probe
-# (inference word size); linking against the ESP runtime comes in M1.
+# Host mode: full Ruby -> C -> host binary -> run (proves the pipeline).
+# ESP32 mode: emit C for the ESP32 target; with --flash/--monitor also copy
+# it into firmware/, cross-compile with idf.py, flash /dev/ttyUSB0, and
+# optionally capture serial output via the DTR/RTS reset sequencing.
 #
 # Usage:
-#   tools/build-app.sh app/hello.rb              # host compile + run
-#   tools/build-app.sh app/hello.rb --emit-only   # stop after C generation
+#   tools/build-app.sh app/hello.rb                       # host compile + run
+#   tools/build-app.sh app/hello.rb --emit-only           # stop after C generation
+#   tools/build-app.sh app/hello.rb --target=esp32        # emit C (esp32 target)
+#   tools/build-app.sh app/hello.rb --target=esp32 --flash    # + copy, idf.py build & flash
+#   tools/build-app.sh app/hello.rb --target=esp32 --flash --monitor  # + capture serial output
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SPINEL="$ROOT/vendor/spinel/spinel"
 OUT="$ROOT/build"
+IDF_EXPORT="$HOME/esp/esp-idf-v5.5/export.sh"
+PORT="${SPINEL_ESP_PORT:-/dev/ttyUSB0}"
+MONITOR="${SPINEL_ESP_MONITOR:-$ROOT/tools/monitor.py}"
+SECONDS_OUT="${SPINEL_ESP_CAPTURE:-12}"
 
-rb="${1:?usage: build-app.sh <file.rb> [--emit-only|--target=esp32]}"
+rb="${1:?usage: build-app.sh <file.rb> [--emit-only|--target=esp32|--flash|--monitor]}"
 shift || true
 mode=""
+want_flash=0
+want_monitor=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --emit-only)   mode="--emit-only" ;;
     --target=esp32) mode="--target=esp32" ;;
+    --flash)       want_flash=1 ;;
+    --monitor)     want_monitor=1; want_flash=1 ;;
     *) echo "build-app.sh: unknown arg $1" >&2; exit 2 ;;
   esac
   shift
@@ -33,11 +45,41 @@ echo "==> spinel C generation: $rb"
 # NB: -S writes generated C to stdout; -o only names the binary output.
 # --target=esp32: --cc= the cross gcc, so spinel's popen(-E -dM) probe reads
 # __SIZEOF_POINTER__=4 and infers 32-bit ints (sp_int=long long stays 64).
-if [[ "$mode" == "--target=esp32" ]]; then
+if [[ "$mode" == "--target=esp32" || $want_flash -eq 1 || $want_monitor -eq 1 ]]; then
   "$SPINEL" "$rb" -S --cc="$XGCC" > "$OUT/$base.c"
   echo "==> emitted $OUT/$base.c ($(wc -l < "$OUT/$base.c") lines) -- target=esp32"
+  if [[ $want_flash -eq 0 && $want_monitor -eq 0 ]]; then
+    exit 0
+  fi
+
+  echo "==> copy $OUT/$base.c -> firmware/main/app.c"
+  cp "$OUT/$base.c" "$ROOT/firmware/main/app.c"
+
+  echo "==> idf.py build (ESP-IDF $(basename "$(dirname "$IDF_EXPORT")"))"
+  # shellcheck disable=SC1090
+  ( cd "$ROOT/firmware" && source "$IDF_EXPORT" >/dev/null 2>&1 \
+      && idf.py build )
+  echo "==> image: $(ls -l "$ROOT/firmware/build/spinel_esp32_app.bin" | awk '{print $5" bytes"}')"
+
+  echo "==> idf.py -p $PORT flash"
+  ( cd "$ROOT/firmware" && source "$IDF_EXPORT" >/dev/null 2>&1 \
+      && idf.py -p "$PORT" flash )
+  echo "==> flashed ok"
+
+  if [[ $want_monitor -eq 1 ]]; then
+    if [[ ! -x "$MONITOR" ]]; then
+      echo "!! monitor helper $MONITOR not found/executable -- skipping capture" >&2
+      exit 0
+    fi
+    echo "==> serial capture ${SECONDS_OUT}s (DTR/RTS reset, $PORT) -> $OUT/$base.log"
+    SPINEL_ESP_PORT="$PORT" SPINEL_ESP_CAPTURE="$SECONDS_OUT" \
+      python3 "$MONITOR" > "$OUT/$base.log" 2>&1
+    echo "==> captured: $OUT/$base.log"
+    grep -av '^$' "$OUT/$base.log" | tail -n 15
+  fi
   exit 0
 fi
+
 "$SPINEL" "$rb" -S > "$OUT/$base.c"
 
 if [[ "$mode" == "--emit-only" ]]; then

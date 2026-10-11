@@ -11,7 +11,7 @@ then to a native binary. This project ports that pipeline to ESP32 (FreeRTOS/ESP
 ```
 app/*.rb ──spinel -S──▶ build/app.c ──┐
                                       ├── cross-cc + libspinel_rt (esp32) ──▶ firmware.elf/bin
-libspinel_rt.a (built for xtensa/riscv32, shimmed for FreeRTOS) ──┘
+libspinel_rt.a (built for riscv32, shimmed for FreeRTOS) ──┘
 ```
 
 1. Host-side `spinel` emits C for the app (`--cc=<cross-gcc>` makes inference 32-bit-aware).
@@ -20,6 +20,10 @@ libspinel_rt.a (built for xtensa/riscv32, shimmed for FreeRTOS) ──┘
    `lib/wasi/` precedent (a constrained target done via header shims).
 3. The generated C + runtime + app FFI bindings link into one `.elf`, flash like any
    ESP-IDF app. Ruby code runs as a single FreeRTOS task owning all GC state.
+
+Status: the pipeline runs **on hardware**. Three Ruby demos (battery ADC, GPIO blink,
+I2C scan) compile from Ruby to C to firmware and run on a LilyGO T-OI Plus
+(ESP32-C3, RV32IMAC), verified over serial.
 
 ## Prerequisites
 
@@ -60,9 +64,6 @@ vendor/spinel/bin/spinel --version
 # spinel 2026.09.12+8185 (6b6f4602c) [...]
 ```
 
-Rebuild the runtime after patching is irrelevant for host builds; the cross
-runtime is built separately (below).
-
 ### 3. Install ESP-IDF (the cross toolchain)
 
 ESP-IDF brings `riscv32-esp-elf-gcc`, newlib headers, FreeRTOS, and the host-side
@@ -80,12 +81,12 @@ sudo apt-get install -y git wget flex bison gperf python3 python3-pip \
 mkdir -p ~/esp && cd ~/esp
 git clone -b v5.5.5 --recursive https://github.com/espressif/esp-idf.git esp-idf-v5.5
 cd esp-idf-v5.5
-./install.sh esp32c3          # installs riscv32 + xtensa gcc into ~/.espressif (~1.5 GB)
+./install.sh esp32c3          # installs riscv32 gcc into ~/.espressif (~1.5 GB)
 ```
 
 Notes:
 
-- Disk: the full clone is ~2 GB, toolchains add ~1.5 GB under `~/.espressif`. 
+- Disk: the full clone is ~2 GB, toolchains add ~1.5 GB under `~/.espressif`.
   `/` should have ≥6 GB free before you start.
 - To also target classic ESP32 / S3 (xtensa) later, run `./install.sh esp32 esp32s3`.
 - The USB serial driver on the T-OI Plus is a CH340 — Linux kernels ≥3.x need no driver.
@@ -97,8 +98,8 @@ Notes:
 idf.py --version
 ```
 
-Only needed in shells where you call `idf.py`/esptool directly. `tools/build-rt.sh`
-sources it itself if it's not already active.
+Only needed in shells where you call `idf.py`/esptool directly. The `tools/`
+scripts source it themselves.
 
 ## Quick start: compile and run a Ruby program (host)
 
@@ -110,32 +111,66 @@ tools/build-app.sh app/hello.rb --emit-only  # just emit build/hello.c, no compi
 
 ## Flashing to the T-OI Plus (ESP32-C3)
 
-Connect the board over USB (CH340 serial). Then, with ESP-IDF exported:
+Connect the board over USB (CH340 serial; `/dev/ttyUSB0`). One-time setup:
 
 ```bash
-tools/build-rt.sh          # cross-compiles libspinel_rt for riscv32-esp-elf (once)
-idf.py -B build/esp32c3 -D SDKCONFIG=... -D IDF_TARGET=esp32c3 build flash monitor
+tools/build-rt.sh     # cross-compiles libspinel_rt for riscv32-esp-elf (~7 min, once)
 ```
 
-(The exact `idf.py` invocation is wired into `tools/` scripts as they land; the
-command above is the shape of it. Board details: docs/boards/t-oi-plus.md.)
+Then flash any app with a single command:
+
+```bash
+tools/build-app.sh app/blink.rb --target=esp32          # emit C only
+tools/build-app.sh app/blink.rb --target=esp32 --flash    # + idf.py build & flash
+tools/build-app.sh app/blink.rb --target=esp32 --monitor  # + capture serial output
+# serial output lands in build/blink.log
+```
+
+`--monitor` resets the board (DTR/RTS sequencing via `tools/monitor.py`) and captures
+~12 s of UART output into `build/<app>.log`. Env overrides: `SPINEL_ESP_PORT`
+(default `/dev/ttyUSB0`), `SPINEL_ESP_CAPTURE` (seconds).
+
+## Demo apps (all verified on hardware)
+
+| App | What it proves | Serial output |
+|-----|----------------|---------------|
+| `app/hello.rb` | pipeline on host | prints from Ruby |
+| `app/blink.rb` | GPIO output | "Blink done... GPIO output from Ruby works" |
+| `app/battery.rb` | ADC + eFuse calibration | battery cell voltage, calibrated |
+| `app/i2c.rb` | I2C master bus | SDA=18/SCL=19 scan, device list |
+
+Details:
+
+- **`blink.rb`** — drives the user LED (GPIO3, active-high) via `esp_rom gpio`
+  FFI: configure + 10 on/off cycles with `nanosleep`. Verified: 10 blinks in 4.3 s,
+  `main() returned 0`.
+- **`battery.rb`** — reads VBAT through the board's 2:1 divider (100k/100k on
+  GPIO2 = ADC1_CH0) using `adc_oneshot` + **eFuse curve-fitting calibration**
+  (`adc_cali_create_scheme_curve_fitting` → `adc_cali_raw_to_voltage`).
+  Naive `raw × 3300 / 4095` scaling over-reads by ~11–15% on ESP32-C3 (see
+  LilyGO issue #19); the calibrated path reads the actual cell voltage. On this
+  board the 16340 cell measures 1.33–1.36 V — deeply discharged, needs charging.
+- **`i2c.rb`** — brings up the I2C master bus (SDA=18, SCL=19, 100 kHz) via
+  `i2c_master` driver, scans all 112 addresses. T-OI Plus has no populated I2C
+  peripherals, so "No I2C devices" is the healthy result.
 
 ## Repo layout
 
 ```
 app/          Ruby applications (the actual firmware logic)
 docs/         findings.md (runtime port research), plan.md (milestones), boards/
+firmware/     ESP-IDF project skeleton (CMakeLists, sdkconfig, app.c slot)
 shim/esp32/   FreeRTOS/newlib compatibility shim for libspinel_rt (the core work)
 patches/      patches carried against vendor/spinel (series-style)
-tools/        build pipeline scripts (host compile, cross compile, flash)
+tools/        build pipeline scripts (host compile, cross compile, flash, monitor)
 vendor/       git submodules (spinel)
 ```
 
 ## Status
 
-See `docs/plan.md`. M0 complete: host pipeline proven end-to-end in-repo.
-M1 (cross runtime) in progress — shim design fully settled (zero upstream diffs,
-wasi-pattern stubs; see docs/findings.md "Blockers" for the evidence).
+See `docs/plan.md`. M0–M3 complete: host pipeline, cross runtime, and hardware
+demos (GPIO/ADC/I2C) all verified on the T-OI Plus. M4 (WiFi STA + web server in
+pure Ruby) in progress.
 
 ## Constraints honored
 
