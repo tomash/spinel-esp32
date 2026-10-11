@@ -14,3 +14,4 @@ dist/
 
 # esp-idf side artifacts if we ever vendor it
 sdkconfig.old
+sdkconfig

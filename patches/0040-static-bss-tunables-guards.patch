@@ -1,0 +1,59 @@
+From: spinel-esp32 port
+Subject: [PATCH 0040] guard GC/alloc static-array capacity macros with #ifndef
+
+The ESP32-C3 target has ~400 KB of usable DRAM, but the runtime archive's
+static BSS alone exceeds it:
+
+  sp_gc.o:    sp_gc_roots[SP_GC_STACK_MAX]      256 KB  (already #ifndef-guarded)
+              sp_gc_remembered[SP_GC_REMEMBERED_MAX]  256 KB  (hard #define)
+              sp_gc_pinned[SP_GC_PINNED_MAX]     64 KB  (hard #define)
+  sp_alloc.o: sp_alloc_stats[SP_ALLOC_STATS]    192 KB  (already #ifndef-guarded)
+              sp_str_shape[SP_STR_SHAPE_MAX]     32 KB  (hard #define)
+
+SP_GC_STACK_MAX and SP_ALLOC_STATS already honor -D overrides; the three
+remaining capacity macros did not, so an embedded build could not shrink
+them without patching the source. Wrap each in #ifndef so the compile line
+(-DSP_GC_REMEMBERED_MAX=... etc. in tools/build-rt.sh) can size them for the
+target. Defaults unchanged for desktop builds.
+
+All uses of the macros are symbolic (array declarations and bounds tests in
+sp_gc.c / sp_alloc.c), so guarding the definitions is layout-neutral.
+
+diff --git a/lib/sp_alloc.c b/lib/sp_alloc.c
+index 536e67944..259370598 100644
+--- a/lib/sp_alloc.c
++++ b/lib/sp_alloc.c
+@@ -127,7 +127,9 @@ static int sp_str_major_forced = 0;
+    Sampling at the sweep removes that limit: the cadence becomes the
+    collector's, not the clock's. A ring, so a long run costs no more than a
+    short one and the samples are the most recent SP_STR_SHAPE_MAX. */
++#ifndef SP_STR_SHAPE_MAX
+ #define SP_STR_SHAPE_MAX 8192
++#endif
+ static size_t sp_str_shape[SP_STR_SHAPE_MAX];
+ static unsigned sp_str_shape_n = 0;      /* total sweeps seen */
+ static int sp_str_shape_cmp(const void *a, const void *b) {
+diff --git a/lib/sp_gc.h b/lib/sp_gc.h
+index ff73c043b..ef0277b13 100644
+--- a/lib/sp_gc.h
++++ b/lib/sp_gc.h
+@@ -176,7 +176,9 @@ typedef struct { int nv; int np; } sp_gc_frame_hdr;
+    assignment inside a larger expression. The statement expression evaluates the
+    object once, which a comma form would not. */
+ #define SP_WBO(x) ({ __typeof__(x) _sp_wbo = (x); sp_gc_wb((void *)_sp_wbo); _sp_wbo; })
++#ifndef SP_GC_REMEMBERED_MAX
+ #define SP_GC_REMEMBERED_MAX 65536
++#endif
+ extern void *sp_gc_remembered[SP_GC_REMEMBERED_MAX];
+ extern int sp_gc_nremembered;
+ extern int sp_gc_rem_overflow;
+@@ -226,7 +228,9 @@ void sp_gc_pin_remembered_slow(void *obj);
+ static inline void sp_gc_pin_remembered(void *obj) {
+   if (SP_EXPECT(sp_gc_minor_on, 1)) sp_gc_pin_remembered_slow(obj);
+ }
++#ifndef SP_GC_PINNED_MAX
+ #define SP_GC_PINNED_MAX 16384
++#endif
+ extern void *sp_gc_pinned[SP_GC_PINNED_MAX];
+ extern int sp_gc_npinned;
+ extern int sp_gc_pin_overflow;

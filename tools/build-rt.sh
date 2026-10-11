@@ -70,15 +70,34 @@ fi
 # as upstream (common.mk SEC_FLAGS), plus the shim include path FIRST: the
 # replacement <signal.h>, <stdio_ext.h>, <sys/resource.h> and the
 # socket-family headers shadow newlib's (or supply what it lacks).
+#
+# Static-BSS sizing for ESP32-C3 (~320 KB usable DRAM after IDF statics):
+# the runtime's default static buffers alone are ~880 KB. The macros below
+# size them for the target (all are #ifndef-guarded in the vendor tree via
+# patches/0040; defaults live in sp_gc.h / sp_alloc.c):
+#   sp_gc_roots[SP_GC_STACK_MAX]           65536*8 -> 256 KB, now 4096*8 = 32 KB
+#   sp_gc_remembered[SP_GC_REMEMBERED_MAX] 65536*8 -> 256 KB, now 1024*8 =  8 KB
+#   sp_gc_pinned[SP_GC_PINNED_MAX]         16384*8 -> 128 KB, now 1024*8 =  8 KB
+#   sp_alloc_stats[SP_ALLOC_STATS]          8192*24 -> 192 KB, now 512*24 = 12 KB
+#   sp_str_shape[SP_STR_SHAPE_MAX]           8192*8 ->  64 KB, now 512*8 =  4 KB
+# Overflow behavior is graceful (heap-allocated extension segments for
+# roots; counts saturate for remembered/pinned/stats), see sp_gc.h:62-101.
+# SP_GC_STACK_MAX MUST match the app TU build (both sides consult it for
+# sp_gc_roots[] and the SP_GC_ROOT bound) -- tools/build-app.sh --target=esp32
+# passes the same list via SPINEL_ESP32_CFLAGS.
 SHIM="$ROOT/shim/esp32"
 VENDOR="$ROOT/vendor/spinel"
 OUT="$ROOT/build/rt-riscv32"
 mkdir -p "$OUT"
 
+SP_SZ="-DSP_GC_STACK_MAX=4096 -DSP_GC_REMEMBERED_MAX=1024 -DSP_GC_PINNED_MAX=1024 \
+  -DSP_ALLOC_STATS=512 -DSP_STR_SHAPE_MAX=512"
+
 CFLAGS_RT="-O2 -ffunction-sections -fdata-sections -ffp-contract=off \
   -Wno-all \
+  -march=rv32imc_zicsr_zifencei -mabi=ilp32 \
   -I$SHIM/include -I$VENDOR/lib -I$VENDOR/lib/regexp -I$VENDOR/lib/regexp/shim \
-  -D__ESP32_SHIM__"
+  -DSP_NO_SIGNALS -D__ESP32_SHIM__ $SP_SZ"
 
 # ---- the source list (upstream Makefile RT_MEMBERS in full: 32 members.
 # Nothing is skipped on ESP32 -- sp_net/sp_system/sp_process* compile fine

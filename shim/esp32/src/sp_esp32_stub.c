@@ -49,6 +49,14 @@ int sigaction(int sig, const struct sigaction *act, struct sigaction *old) {
 int sigaltstack(const stack_t *ss, stack_t *oss) { (void)ss; (void)oss; errno = ENOSYS; return -1; }
 int sigprocmask(int how, const sigset_t *set, sigset_t *old) { (void)how; (void)set; (void)old; errno = ENOSYS; return -1; }
 
+/* signal(): plain POSIX name (newlib exports none) -- spinel's exception
+ * machinery and the (SPINEL_ALLOC_REPORT-only) GC debug path call it. */
+#include <stddef.h>
+void (*signal(int sig, void (*handler)(int)))(int) {
+    (void)sig; (void)handler; errno = ENOSYS; return NULL;
+}
+int siginterrupt(int sig, int flag) { (void)sig; (void)flag; errno = ENOSYS; return -1; }
+
 /* ---- processes: FreeRTOS has none (the wasi precedent) ---- */
 int kill(pid_t p, int s) { (void)p; (void)s; errno = ENOSYS; return -1; }
 pid_t fork(void) { errno = ENOSYS; return (pid_t)-1; }
@@ -61,6 +69,7 @@ int execl(const char *path, const char *arg0, ...) {
 pid_t waitpid(pid_t p, int *st, int fl) { (void)p; (void)st; (void)fl; errno = ECHILD; return (pid_t)-1; }
 
 /* ---- resource limits: report "unlimited" ---- */
+long sysconf(int name) { (void)name; errno = ENOSYS; return -1L; }
 int getrlimit(int res, void *rl) { (void)res; (void)rl; errno = ENOSYS; return -1; }
 int setrlimit(int res, const void *rl) { (void)res; (void)rl; errno = ENOSYS; return -1; }
 int getrusage(int who, void *ru) { (void)who; (void)ru; errno = ENOSYS; return -1; }

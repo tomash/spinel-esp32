@@ -1,0 +1,18 @@
+# sdkconfig.defaults -- spinel ESP32-C3 firmware (M2)
+# The Ruby body runs on the IDF main task's stack (shim mmap -> MAP_FAILED,
+# so sp_main_stack_run runs it in place), so it needs headroom:
+# spinel's host default reservation is 64 MB -- we give the task a real,
+# DRAM-payable 64 KB, and the RT's own allocator does the rest.
+
+# Stack for the main task (the Ruby body + full spinel RT frames).
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=73728
+
+# The Ruby body may loop (e.g. blink) -- the task watchdog on the "main"
+# task would otherwise reset the chip mid-run. Keep the watchdog for
+# idle/interrupt watchdogs, which still catch genuine starvation.
+CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU0=n
+CONFIG_ESP_TASK_WDT_EN=n
+
+# Newlib: the default BASIC printf keeps DRAM free; spinel's sp_puts*
+# paths go through putchar-level code, not printf floats.
+# (esp-console via UART0 is the default already.)
