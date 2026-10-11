@@ -1,0 +1,16 @@
+# build artifacts
+build/
+dist/
+*.o
+*.a
+*.elf
+*.bin
+*.map
+
+# editor/OS
+.*.swp
+*~
+.DS_Store
+
+# esp-idf side artifacts if we ever vendor it
+sdkconfig.old
