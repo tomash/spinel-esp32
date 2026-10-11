@@ -20,15 +20,17 @@ if [[ ! -d "$IDF" ]]; then
   echo "error: ESP-IDF not found at $IDF (set ESP_IDF=...)" >&2
   exit 1
 fi
-CC_DIR="$(ls -d "$HOME"/.espressif/frameworks/*/esp-idf-* 2>/dev/null | head -1)"
-if [[ -z "$CC_DIR" ]]; then
-  echo "error: no ~/.espressif/frameworks/* toolchain -- run esp-idf's install.sh first" >&2
-  exit 1
-fi
-CROSS="$CC_DIR/tools/riscv32-esp-elf"
-if [[ ! -x "$CROSS/bin/riscv32-esp-elf-gcc" ]]; then
-  CROSS="$(find "$HOME/.espressif" -maxdepth 6 -type d -name riscv32-esp-elf 2>/dev/null | head -1)"
-fi
+# ESP-IDF's installer has used two layouts: ~/.espressif/tools/<name>/<ver>/<name>/
+# (v5.5 install.sh) and ~/.espressif/frameworks/<name>-<ver>/ (older/idf-env).
+# Search for the gcc binary itself so category dirs (e.g. tools/riscv32-esp-elf/)
+# can't shadow the real prefix.
+CROSS=""
+for g in $(find "$HOME/.espressif" -maxdepth 6 -type f -name riscv32-esp-elf-gcc 2>/dev/null); do
+  b="$(dirname "$g")"
+  CROSS="$(dirname "$b")"
+  [[ -x "$CROSS/bin/riscv32-esp-elf-ar" ]] && break
+  CROSS=""
+done
 if [[ -z "$CROSS" || ! -x "$CROSS/bin/riscv32-esp-elf-gcc" ]]; then
   echo "error: riscv32-esp-elf-gcc not found under ~/.espressif" >&2
   exit 1
