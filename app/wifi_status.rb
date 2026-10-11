@@ -38,6 +38,10 @@ module ESP32
     #include "nvs_flash.h"
     #include "esp_adc/adc_oneshot.h"
     #include "esp_adc/adc_cali.h"
+    #include "mdns.h"
+    #include "esp_sntp.h"
+    #include "esp_heap_caps.h"
+    #include "time.h"
     #include "string.h"
 
     /* ---- battery: GPIO2 = ADC1_CH2 on ESP32-C3 (NOT CH0; CH0 is GPIO0,
@@ -194,6 +198,85 @@ module ESP32
         vTaskDelay(pdMS_TO_TICKS((uint32_t)ms));
         return 0;
     }
+
+    /* ---- M5a: mDNS (managed component espressif/mdns) ---- */
+    int esp32_mdns_start(const char *hostname, const char *instance, const char *ip) {
+        if (mdns_init() != ESP_OK) return -1;
+        if (mdns_hostname_set(hostname) != ESP_OK) return -2;
+        if (mdns_instance_name_set(instance) != ESP_OK) return -3;
+        /* board=IP txt makes the service discoverable in a browser
+           without knowing the address */
+        mdns_txt_item_t txt[1];
+        txt[0].key = "ip"; txt[0].value = ip;
+        if (mdns_service_add(instance, "_http", "_tcp", 80, txt, 1) != ESP_OK)
+            return -4;
+        return 0;
+    }
+
+    /* ---- M5b: SNTP (in-tree lwip app, esp_sntp.h) ---- */
+    int esp32_sntp_start(void) {
+        esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
+        esp_sntp_setservername(0, "pool.ntp.org");
+        esp_sntp_init();
+        return 0;
+    }
+    /* 1 once NTP has synced, 0 before. NOTE: sntp_get_sync_status() is a
+       one-shot latch in IDF -- it returns COMPLETED once, then flips the
+       status back to RESET (the next sync is CONFIG_LWIP_SNTP_UPDATE_DELAY
+       away, an hour by default). Querying it per-request made the page
+       show "(not synced)" after the very first hit even though the system
+       clock stays correct, so remember the first COMPLETED forever. */
+    static int ws_time_synced = 0;
+    int esp32_sntp_synced(void) {
+        if (!ws_time_synced &&
+            sntp_get_sync_status() == SNTP_SYNC_STATUS_COMPLETED) {
+            ws_time_synced = 1;
+        }
+        return ws_time_synced;
+    }
+    /* Wall time via newlib: "YYYY-MM-DD HH:MM:SS" (UTC) into buf, 0 ok */
+    int esp32_time_utc(char *buf, int cap) {
+        time_t t = time(NULL);
+        struct tm tm;
+        if (gmtime_r(&t, &tm) == NULL) return -1;
+        return strftime(buf, (size_t)cap, "%Y-%m-%d %H:%M:%S", &tm) == 0 ? -2 : 0;
+    }
+
+    /* ---- M5c diagnostics: internal-DRAM budget (C3 has no PSRAM;
+       spinel RT heap, WiFi, mDNS all share this pool) ---- */
+    int esp32_heap_free(void) {
+        return (int)heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    }
+    int esp32_heap_min_free(void) {
+        return (int)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    }
+    int esp32_heap_largest_block(void) {
+        return (int)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    }
+
+    /* ---- M5c: re-aim the RT's GC triggers at the part's DRAM ----
+       Spinel's collector is churn-triggered: it runs after sp_gc_threshold
+       (object heap) / sp_str_threshold (string heap) bytes have been
+       allocated, both defaulting to 256 KB -- a desktop number. The C3 has
+       ~16 KB of free internal DRAM once WiFi + mbedTLS + mDNS are up, so the
+       runtime died of malloc exhaustion (sp_oom_die -> "out of memory",
+       abort, reboot) at ~75 s -- about 1/16th of the way to its first
+       collection. The heartbeat's interpolated puts strings (~260 B each,
+       all garbage) are what piles up. The thresholds are exported data
+       symbols of the RT archive (and the _init twins are the floors the
+       post-collection retunes clamp to), so point them at numbers the part
+       can pay before any of that churn starts. A string-triggered
+       collection sweeps the object heap too (sp_str_collect_retune ->
+       sp_gc_collect), so the object trigger is a backstop, not the pacer. */
+    extern size_t sp_gc_threshold, sp_gc_threshold_init;
+    extern size_t sp_str_threshold, sp_str_threshold_init;
+    extern size_t sp_str_old_threshold, sp_str_old_threshold_init;
+    int esp32_gc_tune(void) {
+        sp_gc_threshold       = 8 * 1024;  sp_gc_threshold_init       = 8 * 1024;
+        sp_str_threshold      = 4 * 1024;  sp_str_threshold_init      = 4 * 1024;
+        sp_str_old_threshold  = 8 * 1024;  sp_str_old_threshold_init  = 8 * 1024;
+        return 0;
+    }
   C
 
   # LED (kept for reuse across demos)
@@ -225,12 +308,21 @@ module ESP32
   ffi_func :esp32_wifi_ap_info,  [:ptr, :int, :ptr], :int
   ffi_func :esp32_wifi_ip,       [:ptr, :int], :int
   ffi_func :esp32_delay_ms,      [:int], :int, blocking: true
+  ffi_func :esp32_mdns_start,    [:str, :str, :str], :int
+  ffi_func :esp32_sntp_start,    [], :int
+  ffi_func :esp32_sntp_synced,   [], :int
+  ffi_func :esp32_time_utc,      [:ptr, :int], :int
+  ffi_func :esp32_heap_free,     [], :int
+  ffi_func :esp32_heap_min_free, [], :int
+  ffi_func :esp32_heap_largest_block, [], :int
+  ffi_func :esp32_gc_tune, [], :int
 end
 
 # ---- buffers for the out-param FFI calls (String allocated in Ruby) ----
 ssid_buf = "\0".b * 33
 chan_buf = "\0".b * 8       # int slot (little-endian RV32; only chan written)
 ip_buf   = "\0".b * 48
+time_buf = "\0".b * 32      # "YYYY-MM-DD HH:MM:SS" + NUL from esp32_time_utc
 
 def read_int_le(buf)
   # 4-byte little-endian int out of a :ptr buffer (RV32IMAC is LE).
@@ -239,7 +331,7 @@ def read_int_le(buf)
   v
 end
 
-def status_page(ssid, rssi, chan, ip, led, cell_v)
+def status_page(ssid, rssi, chan, ip, led, cell_v, time_s)
   led_s  = led ? "on" : "off"
   rssi_s = rssi.nil? ? "?" : "#{rssi}"
   <<~HTML
@@ -253,6 +345,7 @@ def status_page(ssid, rssi, chan, ip, led, cell_v)
     <tr><td>RSSI</td><td>#{rssi_s} dBm</td></tr>
     <tr><td>Channel</td><td>#{chan}</td></tr>
     <tr><td>IP</td><td>#{ip}</td></tr>
+    <tr><td>Time (UTC)</td><td>#{time_s}</td></tr>
     </table>
     <p><a href="/led/toggle" style="background:#eee;color:#111;padding:4px 12px;
        text-decoration:none">Toggle LED (currently #{led_s})</a></p>
@@ -261,6 +354,7 @@ def status_page(ssid, rssi, chan, ip, led, cell_v)
 end
 
 # ---- bring-up ----
+ESP32.esp32_gc_tune()   # M5c: GC triggers sized for the part, before churn starts
 ESP32.esp32_led_init(LED_PIN)
 ESP32.esp32_led_write(LED_PIN, 1)
 rc = ESP32.esp32_wifi_init(SSID, PASSWORD)
@@ -284,6 +378,13 @@ else
   ESP32.esp32_wifi_ip(ip_buf, 48)
   ip = ip_buf.delete("\0").strip
   puts "WiFi: connected, IP #{ip}"
+  # -- M5a: announce spinel-esp32.local (mDNS) --
+  rc = ESP32.esp32_mdns_start("spinel-esp32", "spinel ESP32 status", ip)
+  puts rc == 0 ? "mDNS: spinel-esp32.local announced (_http._tcp :80)" \
+               : "mDNS: start failed (#{rc}) -- serving on IP only"
+  # -- M5b: start NTP, wall clock on the status page --
+  ESP32.esp32_sntp_start()
+  puts "NTP: querying pool.ntp.org ..."
 end
 
 server = TCPServer.new("0.0.0.0", PORT)
@@ -293,8 +394,24 @@ led = 1
 loop_count = 0
 loop do
   # -- one non-blocking accept per tick --
-  client = server.accept_nonblock(exception: false)
+  # M5c: accept itself can raise -- spinel's exception: false softens
+  # only EAGAIN, and a peer that RSTs a connection still sitting in the
+  # listen backlog makes lwip's accept fail with ENOTCONN (observed:
+  # uncaught Errno::ENOTCONN "Socket is not connected @ accept" ->
+  # abort() -> reboot, reproducibly). Rescue here so a dead backlogged
+  # peer cannot reboot the board; the listener stays usable.
+  client = nil
+  begin
+    client = server.accept_nonblock(exception: false)
+  rescue => e
+    puts "[#{loop_count}] accept error: #{e.class} #{e.message}"
+  end
   if client && client != :wait_readable
+    # M5c: a client that dies mid-exchange raises -- spinel's
+    # read_nonblock(exception: false) softens only EAGAIN, and an
+    # uncaught Errno aborts the VM (observed: ENOTCONN -> abort ->
+    # reboot). Rescue so one dropped connection cannot reboot the board.
+    begin
     req = ""
     # read until end of headers (best-effort, bounded)
     4.times do
@@ -327,12 +444,28 @@ loop do
 
     mv = ESP32.esp32_adc_read_mv()
     cell_v = mv >= 0 ? ((mv * DIVIDER) / 1000.0).round(2) : 0.0
-    body = status_page(ssid, rssi, chan, ip, led != 0, cell_v)
+    # -- M5b: wall time (once NTP has synced) on the page --
+    time_s = "(not synced)"
+    if ESP32.esp32_sntp_synced() != 0
+      rc = ESP32.esp32_time_utc(time_buf, 24)
+      time_s = rc == 0 ? time_buf.delete("\0").strip : "(clock error)"
+    end
+    body = status_page(ssid, rssi, chan, ip, led != 0, cell_v, time_s)
     client.write "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n" \
                  "Content-Length: #{body.bytesize}\r\nConnection: close\r\n\r\n"
     client.write body
     client.close
     puts "[#{loop_count}] served: #{req.split("\r\n")[0]}"
+    rescue => e
+      # socket-level error (ENOTCONN/ECONNRESET/...): the exchange is dead,
+      # but the server is not. Best-effort close, keep serving.
+      puts "[#{loop_count}] client error: #{e.class} #{e.message}"
+      begin
+        client.close
+      rescue StandardError
+        nil
+      end
+    end
   end
 
   # -- slow-poll housekeeping: log battery; LED no longer blinks -- the
@@ -340,7 +473,9 @@ loop do
   if (loop_count % 50) == 0
     mv = ESP32.esp32_adc_read_mv()
     if mv >= 0
-      puts "[#{loop_count}] idle; cell #{((mv * DIVIDER) / 1000.0).round(2)}V"
+      puts "[#{loop_count}] idle; cell #{((mv * DIVIDER) / 1000.0).round(2)}V " \
+           "heap #{ESP32.esp32_heap_free()} (min #{ESP32.esp32_heap_min_free()}, " \
+           "largest #{ESP32.esp32_heap_largest_block()})"
     end
     ESP32.esp32_delay_ms(20)
   else

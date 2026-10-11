@@ -163,6 +163,34 @@ Details:
   `GET /led/toggle` to flip the on-board LED from a browser — state held in
   the Ruby process. On the home AP it associates in ~10 ms and answers curl
   from the LAN.
+- **`wifi_status.rb` (M5 additions)** — the app also grows the LAN-facing
+  niceties and the survival kit:
+
+  - **mDNS** — `spinel-esp32.local` announced over `_http._tcp` via the
+    `espressif/mdns` managed component (FFI: `mdns_init`,
+    `mdns_hostname_set`, `mdns_instance_name_set`, `mdns_service_add`).
+    `curl http://spinel-esp32.local/` just works from the LAN.
+  - **NTP** — wall clock on the status page via SNTP (`esp_sntp_setoperatingmode`
+    … `esp_sntp_init`, querying `pool.ntp.org`). See the *gotcha* below —
+    `sntp_get_sync_status()` is a one-shot latch in IDF.
+  - **GC tuning (`esp32_gc_tune`)** — spinel's RT ships GC thresholds sized
+    for desktops (`sp_gc_threshold` 256 KB etc.). On the ESP32-C3's ~16 KB
+    DRAM heap, the churn-triggered GC never fires, and the app walks into an
+    OOM death spiral → `abort()` → reboot at ~75 s. The fix writes the
+    exported RT symbols (both current and `_init` floor values, because
+    post-collection retunes clamp to `_init`): `sp_gc_threshold` 8 KB,
+    `sp_str_threshold` 4 KB, `sp_str_old_threshold` 8 KB. Result on silicon:
+    heap sawtooth — collections every ~850 loops (~25 s), +3.9 KB recovered
+    each, min watermark never below ~11 KB in idle.
+  - **Socket-error resilience** — any spinel app doing sockets needs to
+    rescue **both** the exchange and the `accept` itself: spinel's
+    `exception: false` softens only `EAGAIN`. A peer that RSTs a connection
+    still sitting in the listen backlog makes lwip's accept fail with
+    `ENOTCONN` (observed: uncaught `Errno::ENOTCONN "Socket is not connected
+    @ accept"` → `abort()` → reboot, 3/3 reproducible). The app rescues the
+    accept and the read/write exchange separately; an RST storm that
+    previously rebooted the board 3× now logs `accept error:`/`client
+    error:` lines and keeps serving.
 
 ## Repo layout
 
@@ -178,10 +206,13 @@ vendor/       git submodules (spinel)
 
 ## Status
 
-See `docs/plan.md`. M0–M4 complete: host pipeline, cross runtime, hardware demos
-(GPIO/ADC/I2C), and WiFi STA + web server in pure Ruby — all verified on the
+See `docs/plan.md`. M0–M5 complete: host pipeline, cross runtime, hardware demos
+(GPIO/ADC/I2C), WiFi STA + web server in pure Ruby — all verified on the
 T-OI Plus, including the `/led/toggle` endpoint over the LAN and calibrated
-battery voltage matching the multimeter.
+battery voltage matching the multimeter. M5 adds mDNS
+(`http://spinel-esp32.local/`), NTP wall-clock on the status page, GC
+thresholds tuned for the C3's 16 KB DRAM heap, and socket-error resilience —
+verified under an RST storm with zero reboots. Next: M6 (OTA updates).
 
 ## Constraints honored
 

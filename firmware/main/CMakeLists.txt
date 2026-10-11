@@ -15,7 +15,10 @@ idf_component_register(
     # and the IDF link line resolve them here. (sp_lwip_compat.c is
     # self-contained -- it needs no lwip headers -- but lwip stays a
     # dependency: it provides the lwip_* symbols the compat TU calls.)
-    REQUIRES esp_wifi nvs_flash esp_netif esp_event esp_adc esp_driver_gpio lwip
+    # M5a: mdns is the managed component espressif/mdns (idf_component.yml)
+    # -- not in the IDF v5.5 component tree; the component manager fetches
+    # it at configure time into build/managed_components.
+    REQUIRES esp_wifi nvs_flash esp_netif esp_event esp_adc esp_driver_gpio lwip mdns
 )
 
 # Link the prebuilt spinel RT after this component's objects. Imported

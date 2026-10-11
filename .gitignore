@@ -15,3 +15,6 @@ dist/
 # esp-idf side artifacts if we ever vendor it
 sdkconfig.old
 sdkconfig
+# managed components are fetched by idf_component.yml at build time
+firmware/managed_components/
+firmware/dependencies.lock
