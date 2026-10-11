@@ -67,24 +67,25 @@ fi
 
 # ---- flags ----------------------------------------------------------------
 # -O2, per-function sections for --gc-sections, same FP contract discipline
-# as upstream (common.mk SEC_FLAGS), plus the shim include path FIRST and the
-# force-include of the signal surface (only for lib TUs; see the header).
+# as upstream (common.mk SEC_FLAGS), plus the shim include path FIRST: the
+# replacement <signal.h>, <stdio_ext.h>, <sys/resource.h> and the
+# socket-family headers shadow newlib's (or supply what it lacks).
 SHIM="$ROOT/shim/esp32"
 VENDOR="$ROOT/vendor/spinel"
 OUT="$ROOT/build/rt-riscv32"
 mkdir -p "$OUT"
 
 CFLAGS_RT="-O2 -ffunction-sections -fdata-sections -ffp-contract=off \
-  -Wno-all -Wno-unknown-warning-option \
+  -Wno-all \
   -I$SHIM/include -I$VENDOR/lib -I$VENDOR/lib/regexp -I$VENDOR/lib/regexp/shim \
-  -include $SHIM/include/sp_esp32_signal.h \
   -D__ESP32_SHIM__"
 
-# ---- the source list (upstream Makefile RT_MEMBERS, minus the ones the
-# toolchain's sysroot genuinely cannot compile: sp_cold.c's Linux-only
-# debuginfo walkers, sp_dtoa.c's x86 intrinsics detection -- see the probe
-# notes; sp_net/sp_process* stay: they compile and raise honest runtime errors)
-RT_MEMBERS="sp_bigint sp_crypto sp_pack sp_time sp_core sp_gc sp_slab sp_alloc \
+# ---- the source list (upstream Makefile RT_MEMBERS in full: 32 members.
+# Nothing is skipped on ESP32 -- sp_net/sp_system/sp_process* compile fine
+# against the shims and raise honest runtime ENOSYS errors where the OS has
+# no answer; sp_cold.c's Linux-only debuginfo walkers and sp_dtoa.c's x86
+# intrinsics are #ifdef'd by the code itself under !__ESP32_SHIM__ probe notes)
+RT_MEMBERS="sp_bigint sp_crypto sp_pack sp_time sp_core sp_net sp_system sp_gc sp_slab sp_alloc \
   sp_dtoa sp_marshal sp_format sp_string sp_inspect sp_poly_cold sp_array sp_str \
   sp_str_cold sp_str_crypt sp_hash sp_proc sp_exc sp_re sp_random sp_fiber sp_sched \
   sp_io sp_iobuffer sp_cold sp_process sp_process_status"

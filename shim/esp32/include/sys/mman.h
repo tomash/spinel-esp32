@@ -48,6 +48,21 @@ extern "C" {
 void *mmap(void *addr, size_t len, int prot, int flags, int fd, long off);
 int munmap(void *addr, size_t len);
 int mprotect(void *addr, size_t len, int prot);
+/* madvise: sp_slab.c hands carved chunks back with MADV_DONTNEED and marks
+   the reservation MADV_DONTDUMP. With mmap answering MAP_FAILED the slab
+   never turns on (sp_slab_reserve's shrink loop ends in sp_slab_on = 0),
+   so both sites are dead code that must still compile. Advice values are
+   Linux's -- the code was written against them, and they only ever reach
+   the stub. */
+int madvise(void *addr, size_t len, int advice);
+
+#define MADV_NORMAL     0
+#define MADV_RANDOM     1
+#define MADV_SEQUENTIAL 2
+#define MADV_WILLNEED   3
+#define MADV_DONTNEED   4
+#define MADV_DONTDUMP   16
+#define MADV_DODUMP     17
 
 #ifdef __cplusplus
 }
