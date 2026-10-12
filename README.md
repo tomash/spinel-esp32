@@ -130,6 +130,34 @@ tools/build-app.sh app/blink.rb --target=esp32 --monitor  # + capture serial out
 ~12 s of UART output into `build/<app>.log`. Env overrides: `SPINEL_ESP_PORT`
 (default `/dev/ttyUSB0`), `SPINEL_ESP_CAPTURE` (seconds).
 
+## Updating firmware over the air (M6)
+
+Once the board is on WiFi, you can update it without a USB cable. Serve the
+new app image over the LAN and point the board at it:
+
+```bash
+tools/build-app.sh app/wifi_status.rb --target=esp32    # rebuilds firmware
+mkdir -p /tmp/pub && cp firmware/build/spinel_esp32_app.bin /tmp/pub/spinel.bin
+cd /tmp/pub && python3 -m http.server 8000 &
+
+curl http://spinel-esp32.local/ota/status               # slots + versions
+curl "http://<board>/ota/start?url=<host-ip>:8000/spinel.bin&force=1"
+curl http://<board>/ota/reboot
+```
+
+- `url` is a **bare** `host:port/path` (no scheme). Serve the image from any
+  LAN host (e.g. `python3 -m http.server 8000` in the directory holding
+  `spinel.bin`); the board does an HTTP **GET** of it over lwIP.
+- Without `force=1`, `/ota/start` refuses an image with the same app version
+  as the running slot (guard, no flash writes).
+- The image streams into the **inactive** slot with sequential erase —
+  heap-safe through the whole ~1.27 MB transfer (min ~74.9 KB free).
+- After reboot the new slot boots as PENDING_VERIFY; it marks itself valid
+  only after successfully serving a request. A bad image is rolled back by
+  the bootloader on the next reset automatically.
+- Both slots must keep a working image: flash a *known-good* image into the
+  second slot first (OTA the clean build onto itself) before experimenting.
+
 ## Demo apps (all verified on hardware)
 
 | App | What it proves | Serial output |
