@@ -30,6 +30,23 @@ PORT     = 80
 LED_PIN  = 3
 DIVIDER  = 2 # 100k/100k divider: cell = 2x pin voltage
 
+# Board identity drives the page header and the mDNS hostname: two boards
+# on one LAN must not both claim spinel-esp32.local (mDNS is first-come:
+# the second board to start either loses the name or knocks the first off
+# it, depending on the responder). T-OI Plus keeps the plain name; the
+# T-Display gets an explicit -tdisplay suffix.
+def board_name
+  ESP32.esp32_board_name.delete("\0")
+end
+
+def mdns_host
+  if board_name.include?("T-Display")
+    "spinel-esp32-tdisplay"
+  else
+    "spinel-esp32"
+  end
+end
+
 module ESP32
   ffi_source <<~C
     #include "esp_wifi.h"
@@ -382,10 +399,34 @@ module ESP32
     }
   C
 
+  # Board identity: the RT archive is target-agnostic, but the app adapter
+  # knows which chip it was compiled for (same CONFIG_IDF_TARGET_ESP32
+  # guard as the ADC block above). The name goes on the status page and in
+  # the mDNS hostname, so a T-OI Plus and a T-Display on one LAN announce
+  # distinct hosts instead of fighting over spinel-esp32.local.
+  ffi_source <<~C
+    const char *esp32_board_name(void) {
+    #if CONFIG_IDF_TARGET_ESP32
+        return "TTGO T-Display";
+    #else
+        return "T-OI Plus (ESP32-C3)";
+    #endif
+    }
+    int esp32_board_has_lcd(void) {
+    #if CONFIG_IDF_TARGET_ESP32
+        return 1;   /* ST7789 panel, driver in firmware/main/tdisplay.c */
+    #else
+        return 0;
+    #endif
+    }
+  C
+
   ffi_func :esp32_adc_init,     [], :int
   ffi_func :esp32_adc_read_mv, [], :int
   ffi_func :esp32_led_init,     [:int], :int
   ffi_func :esp32_led_write,    [:int, :int], :int
+  ffi_func :esp32_board_name,   [], :str
+  ffi_func :esp32_board_has_lcd, [], :int
   ffi_func :esp32_wifi_init,     [:str, :str], :int
   ffi_func :esp32_wifi_connect, [], :int
   ffi_func :esp32_wifi_scan,    [], :int
@@ -414,6 +455,75 @@ module ESP32
   ffi_func :esp32_ota_reboot,         [], :int
 end
 
+# ---- T-Display ST7789 (driver: firmware/main/tdisplay.c) ----
+# Declared with the same FFI DSL. The C driver is only linked into the
+# classic-ESP32 (T-Display) build, so every screen helper below is gated
+# by esp32_board_has_lcd -- on the C3 the calls are never made.
+module TDisplay
+  ffi_func :esp32_display_init,  [], :int
+  ffi_func :esp32_display_clear, [:int], :int
+  ffi_func :esp32_display_rect,  [:int, :int, :int, :int, :int, :int], :int
+  ffi_func :esp32_display_text,  [:str, :int, :int, :int, :int, :int], :int
+end
+
+# Panel is portrait 135x240 (known-good gap 52/40 + inversion; landscape
+# via MADCTL MV would transpose draw_bitmap coordinates -- revisit after a
+# visual check). Colors: RGB565.
+W = 135
+H = 240
+
+# Boot/status screens. All helpers no-op silently when the board has no
+# panel; esp32_display_* return IDF error codes which we log once.
+$lcd_ok = false
+
+def lcd_boot
+  return false if ESP32.esp32_board_has_lcd == 0
+  rc = TDisplay.esp32_display_init
+  if rc != 0
+    puts "LCD: init failed (#{rc}) -- continuing headless"
+    return false
+  end
+  TDisplay.esp32_display_clear(0x0000)
+  true
+end
+
+def lcd_show_booting(ssid)
+  return unless $lcd_ok
+  TDisplay.esp32_display_rect(0, 0, W, 28, 0x001F, 1)          # blue title bar
+  TDisplay.esp32_display_text("TTGO T-DISPLAY", 6, 9, 0xFFFF, 0x001F, 1)
+  TDisplay.esp32_display_text("SPINEL ESP32", 8, 44, 0x07E0, 0x0000, 2)
+  TDisplay.esp32_display_text("WIFI:", 8, 84, 0xFFFF, 0x0000, 1)
+  TDisplay.esp32_display_text(ssid[0, 21], 8, 100, 0xFFE0, 0x0000, 1)
+  TDisplay.esp32_display_text("CONNECTING...", 8, 120, 0xFFFF, 0x0000, 1)
+end
+
+def lcd_show_running(ip, host, cell_v)
+  return unless $lcd_ok
+  TDisplay.esp32_display_clear(0x0000)
+  TDisplay.esp32_display_rect(0, 0, W, 28, 0x001F, 1)          # blue title bar
+  TDisplay.esp32_display_text("TTGO T-DISPLAY", 6, 9, 0xFFFF, 0x001F, 1)
+  # the one thing the screen exists for: the address to open
+  TDisplay.esp32_display_text("HTTP://", 8, 48, 0x07E0, 0x0000, 1)
+  TDisplay.esp32_display_text(ip, 8, 62, 0x07E0, 0x0000, 2)
+  TDisplay.esp32_display_text("AND", 8, 96, 0xFFFF, 0x0000, 1)
+  TDisplay.esp32_display_text("HTTP://#{host}", 8, 110, 0x07E0, 0x0000, 1)
+  TDisplay.esp32_display_text(".LOCAL", 8, 124, 0x07E0, 0x0000, 1)
+  TDisplay.esp32_display_text("SERVING / ON :80", 8, 150, 0xFFFF, 0x0000, 1)
+  lcd_battery_line(cell_v)
+end
+
+def lcd_battery_line(cell_v)
+  return unless $lcd_ok
+  TDisplay.esp32_display_rect(0, 228, W, 12, 0x0000, 1)        # wipe footer
+  TDisplay.esp32_display_text("CELL #{cell_v}V", 8, 228, 0xFFE0, 0x0000, 1)
+end
+
+def lcd_show_wifi_failed
+  return unless $lcd_ok
+  TDisplay.esp32_display_text("WIFI: NO LINK", 8, 120, 0xF800, 0x0000, 1)
+  TDisplay.esp32_display_text("SERVING IP ONLY", 8, 136, 0xFFFF, 0x0000, 1)
+end
+
 # ---- buffers for the out-param FFI calls (String allocated in Ruby) ----
 ssid_buf = "\0".b * 33
 chan_buf = "\0".b * 8       # int slot (little-endian RV32; only chan written)
@@ -434,7 +544,7 @@ def status_page(ssid, rssi, chan, ip, led, cell_v, time_s, slot_s, ota)
   <<~HTML
     <!doctype html><html><head><title>spinel-esp32</title></head>
     <body style="font-family:monospace;background:#111;color:#eee;padding:2em">
-    <h1>T-OI Plus / spinel-esp32</h1>
+    <h1>#{board_name} / spinel-esp32</h1>
     <table>
     <tr><td>LED (GPIO#{LED_PIN})</td><td>#{led_s}</td></tr>
     <tr><td>Battery cell</td><td>#{cell_v} V</td></tr>
@@ -456,6 +566,11 @@ end
 
 # ---- bring-up ----
 ESP32.esp32_gc_tune()   # M5c: GC triggers sized for the part, before churn starts
+$lcd_ok = lcd_boot()    # T-Display: panel up before anything slow runs
+if $lcd_ok
+  lcd_show_booting(SSID)
+  puts "LCD: booted, splash up"
+end
 ESP32.esp32_led_init(LED_PIN)
 ESP32.esp32_led_write(LED_PIN, 1)
 rc = ESP32.esp32_wifi_init(SSID, PASSWORD)
@@ -475,13 +590,15 @@ puts "Connecting to #{SSID} ..."
 end
 if ESP32.esp32_wifi_connected == 0
   puts "WiFi: connect timed out -- server will still listen"
+  lcd_show_wifi_failed
 else
   ESP32.esp32_wifi_ip(ip_buf, 48)
   ip = ip_buf.delete("\0").strip
   puts "WiFi: connected, IP #{ip}"
-  # -- M5a: announce spinel-esp32.local (mDNS) --
-  rc = ESP32.esp32_mdns_start("spinel-esp32", "spinel ESP32 status", ip)
-  puts rc == 0 ? "mDNS: spinel-esp32.local announced (_http._tcp :80)" \
+  # -- M5a: announce mdns_host + ".local" (mDNS) --
+  host = mdns_host
+  rc = ESP32.esp32_mdns_start(host, "spinel ESP32 status", ip)
+  puts rc == 0 ? "mDNS: #{host}.local announced (_http._tcp :80)" \
                : "mDNS: start failed (#{rc}) -- serving on IP only"
   # -- M5b: start NTP, wall clock on the status page --
   ESP32.esp32_sntp_start()
@@ -490,6 +607,19 @@ end
 
 server = TCPServer.new("0.0.0.0", PORT)
 puts "Serving status on 0.0.0.0:#{PORT} (polling loop, no threads)"
+
+# The screen's whole job: once the server is actually listening, show how
+# to reach it -- numeric IP first, mDNS name as the second line. (The IP
+# was already known above if WiFi joined; re-read it so the screen never
+# shows an address the server cannot back.)
+if ESP32.esp32_wifi_connected != 0
+  ESP32.esp32_wifi_ip(ip_buf, 48)
+  show_ip = ip_buf.delete("\0").strip
+  mv = ESP32.esp32_adc_read_mv()
+  cell0 = mv >= 0 ? ((mv * DIVIDER) / 1000.0).round(2) : 0.0
+  lcd_show_running(show_ip, mdns_host, cell0)
+  puts "LCD: running screen (#{show_ip} / #{mdns_host}.local)"
+end
 
 led = 1
 loop_count = 0
@@ -872,9 +1002,11 @@ loop do
   if (loop_count % 50) == 0
     mv = ESP32.esp32_adc_read_mv()
     if mv >= 0
-      puts "[#{loop_count}] idle; cell #{((mv * DIVIDER) / 1000.0).round(2)}V " \
+      cell = ((mv * DIVIDER) / 1000.0).round(2)
+      puts "[#{loop_count}] idle; cell #{cell}V " \
            "heap #{ESP32.esp32_heap_free()} (min #{ESP32.esp32_heap_min_free()}, " \
            "largest #{ESP32.esp32_heap_largest_block()})"
+      lcd_battery_line(cell)   # footer refresh ~ every 1 s (50 ticks x 20 ms)
     end
     # M6: one explicit collection per heartbeat -- bounds the decay
     # between churn-triggered runs to ~one heartbeat's garbage (~260 B)
