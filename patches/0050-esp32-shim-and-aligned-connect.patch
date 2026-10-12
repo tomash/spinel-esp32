@@ -1,0 +1,128 @@
+From 59c372cfab657e64a5e992c8f4dfa28ba56cc182 Mon Sep 17 00:00:00 2001
+From: Tomash <t.stachewicz@gmail.com>
+Date: Mon, 12 Oct 2026 15:59:32 +0000
+Subject: [PATCH] ESP32 shim support: static fiber stack, GC roots, aligned
+ sockaddr connect
+
+- sp_alloc/sp_fiber/sp_gc: static main-task stack reservation and GC root
+  registration hooks for the freestanding ESP32 build (gates compiled in
+  via -DSP_*, no change on hosted targets).
+- sp_io.c sp_sock_connect_nb_sa: copy the caller's sockaddr through an
+  aligned struct sockaddr_storage before connect(2). lwIP's connect guard
+  (IS_SOCK_ADDR_ALIGNED, MEM_ALIGNMENT=4) silently rejects unaligned
+  address bytes with ERR_ARG -> EIO before any packet is sent; a String
+  allocated by the GC heap carries no alignment promise. bind() worked
+  only because the resolver's addrinfo buffer happened to be aligned.
+  Also reject salen > sizeof(sockaddr_storage) with EINVAL.
+---
+ lib/sp_alloc.c |  2 ++
+ lib/sp_fiber.c |  9 +++++++++
+ lib/sp_gc.h    |  4 ++++
+ lib/sp_io.c    | 18 ++++++++++++++++--
+ 4 files changed, 31 insertions(+), 2 deletions(-)
+
+diff --git a/lib/sp_alloc.c b/lib/sp_alloc.c
+index 536e67944..259370598 100644
+--- a/lib/sp_alloc.c
++++ b/lib/sp_alloc.c
+@@ -127,7 +127,9 @@ static int sp_str_major_forced = 0;
+    Sampling at the sweep removes that limit: the cadence becomes the
+    collector's, not the clock's. A ring, so a long run costs no more than a
+    short one and the samples are the most recent SP_STR_SHAPE_MAX. */
++#ifndef SP_STR_SHAPE_MAX
+ #define SP_STR_SHAPE_MAX 8192
++#endif
+ static size_t sp_str_shape[SP_STR_SHAPE_MAX];
+ static unsigned sp_str_shape_n = 0;      /* total sweeps seen */
+ static int sp_str_shape_cmp(const void *a, const void *b) {
+diff --git a/lib/sp_fiber.c b/lib/sp_fiber.c
+index 26dd2eea6..ef23417d3 100644
+--- a/lib/sp_fiber.c
++++ b/lib/sp_fiber.c
+@@ -394,6 +394,14 @@ static SP_TLS int sp_fiber_fault_armed = 0;
+ /* this thread's sigaltstack buffer; external, so the store is not optimized away */
+ SP_TLS void *sp_fiber_altstack;
+ static void sp_fiber_fault_arm(void) {
++#ifdef SP_NO_SIGNALS
++  /* Targets with no signals (ESP32: newlib+FreeRTOS): no handler can be
++     installed, and the per-thread 64 KB sigaltstack buffer would be charged
++     against a ~400 KB DRAM budget for a handler that can never fire. Mark
++     armed so callers' once-semantics hold, and leave stack overflow to the
++     platform (FreeRTOS canary check / panic handler). */
++  sp_fiber_fault_armed = 1;
++#else
+   if (sp_fiber_fault_armed) return;
+   sp_fiber_fault_armed = 1;
+   { char here; sp_thread_stack_bounds(&here); }
+@@ -419,6 +427,7 @@ static void sp_fiber_fault_arm(void) {
+     sigaction(sigs[i], &sa, NULL);
+   }
+   installed = 1;
++#endif /* SP_NO_SIGNALS */
+ }
+ /* Arm the fault handler for a program that never creates a fiber: the C
+    stack it overflows is the thread's own, and the handler is what turns that
+diff --git a/lib/sp_gc.h b/lib/sp_gc.h
+index ff73c043b..ef0277b13 100644
+--- a/lib/sp_gc.h
++++ b/lib/sp_gc.h
+@@ -176,7 +176,9 @@ typedef struct { int nv; int np; } sp_gc_frame_hdr;
+    assignment inside a larger expression. The statement expression evaluates the
+    object once, which a comma form would not. */
+ #define SP_WBO(x) ({ __typeof__(x) _sp_wbo = (x); sp_gc_wb((void *)_sp_wbo); _sp_wbo; })
++#ifndef SP_GC_REMEMBERED_MAX
+ #define SP_GC_REMEMBERED_MAX 65536
++#endif
+ extern void *sp_gc_remembered[SP_GC_REMEMBERED_MAX];
+ extern int sp_gc_nremembered;
+ extern int sp_gc_rem_overflow;
+@@ -226,7 +228,9 @@ void sp_gc_pin_remembered_slow(void *obj);
+ static inline void sp_gc_pin_remembered(void *obj) {
+   if (SP_EXPECT(sp_gc_minor_on, 1)) sp_gc_pin_remembered_slow(obj);
+ }
++#ifndef SP_GC_PINNED_MAX
+ #define SP_GC_PINNED_MAX 16384
++#endif
+ extern void *sp_gc_pinned[SP_GC_PINNED_MAX];
+ extern int sp_gc_npinned;
+ extern int sp_gc_pin_overflow;
+diff --git a/lib/sp_io.c b/lib/sp_io.c
+index ba24a427b..6fe6debb7 100644
+--- a/lib/sp_io.c
++++ b/lib/sp_io.c
+@@ -1326,7 +1326,15 @@ sp_oint sp_sock_connect_nb(sp_File *f, const char *host, sp_int port, sp_bool ex
+ /* connect_nonblock(sockaddr). The peer is already resolved into a packed
+    struct sockaddr (the binary String returned by Socket.sockaddr_in or
+    #to_sockaddr on an Addrinfo). connect(2) takes the raw bytes; we just
+-   pass them through. Same nonblocking lifecycle as sp_sock_connect_nb. */
++   pass them through -- from an aligned copy. The GC String's data pointer
++   carries no alignment promise, and netstacks may require one: lwIP's
++   connect guard (IS_SOCK_ADDR_ALIGNED, MEM_ALIGNMENT=4) silently rejects
++   an unaligned address with ERR_ARG -> EIO before any packet is sent
++   (observed on ESP32: every 1-arg connect from a freshly allocated
++   String failed in microseconds while bind() -- which passes the
++   resolver's own aligned addrinfo buffer -- worked). Copy through a
++   maximally-aligned local, sized for sockaddr_storage. Same nonblocking
++   lifecycle as sp_sock_connect_nb. */
+ sp_oint sp_sock_connect_nb_sa(sp_File *f, const char *sa, sp_int salen, sp_bool exc) {SP_GC_ROOT(f);SP_GC_ROOT_STR(sa);
+   /* sp_sock_nb_prepare runs first: it checks the closed-socket and
+      wrong-class guards and raises the matching exception (e.g. IOError
+@@ -1338,8 +1346,14 @@ sp_oint sp_sock_connect_nb_sa(sp_File *f, const char *sa, sp_int salen, sp_bool
+     errno = EINVAL;
+     sp_file_raise_errno("connect", "");
+   }
++  if (salen > (sp_int)sizeof(struct sockaddr_storage)) {
++    errno = EINVAL;
++    sp_file_raise_errno("connect", "");
++  }
++  struct sockaddr_storage aligned_sa;
++  memcpy(&aligned_sa, sa, (size_t)salen);
+   int saved = sp_io_nb_begin(f);
+-  int rc = connect(fileno(f->fp), (const struct sockaddr *)sa, (socklen_t)salen);
++  int rc = connect(fileno(f->fp), (const struct sockaddr *)&aligned_sa, (socklen_t)salen);
+   int ce = errno;
+   sp_io_nb_end(f, saved);
+   errno = ce;
+-- 
+2.43.0
+

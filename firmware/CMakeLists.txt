@@ -12,6 +12,13 @@
 # is the live path -- hence the raised main-task stack in sdkconfig.defaults.
 
 cmake_minimum_required(VERSION 3.16)
+# M6: distinct app version per build, so the OTA version guard
+# (esp32_ota_check_version, mirroring native_ota_example) can tell a new
+# image from the running one and refuse a no-op reflash. Must be set
+# BEFORE project.cmake / project(): IDF stamps the app descriptor at
+# project() time, falling back to git describe (which does not change
+# across a working-tree rebuild).
+set(PROJECT_VER "0.7.0")
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/spinel_target.cmake)
 project(spinel_esp32_app C CXX ASM)

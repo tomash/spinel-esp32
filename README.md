@@ -130,6 +130,34 @@ tools/build-app.sh app/blink.rb --target=esp32 --monitor  # + capture serial out
 ~12 s of UART output into `build/<app>.log`. Env overrides: `SPINEL_ESP_PORT`
 (default `/dev/ttyUSB0`), `SPINEL_ESP_CAPTURE` (seconds).
 
+## Updating firmware over the air (M6)
+
+Once the board is on WiFi, you can update it without a USB cable. Serve the
+new app image over the LAN and point the board at it:
+
+```bash
+tools/build-app.sh app/wifi_status.rb --target=esp32    # rebuilds firmware
+mkdir -p /tmp/pub && cp firmware/build/spinel_esp32_app.bin /tmp/pub/spinel.bin
+cd /tmp/pub && python3 -m http.server 8000 &
+
+curl http://spinel-esp32.local/ota/status               # slots + versions
+curl "http://<board>/ota/start?url=<host-ip>:8000/spinel.bin&force=1"
+curl http://<board>/ota/reboot
+```
+
+- `url` is a **bare** `host:port/path` (no scheme). Serve the image from any
+  LAN host (e.g. `python3 -m http.server 8000` in the directory holding
+  `spinel.bin`); the board does an HTTP **GET** of it over lwIP.
+- Without `force=1`, `/ota/start` refuses an image with the same app version
+  as the running slot (guard, no flash writes).
+- The image streams into the **inactive** slot with sequential erase —
+  heap-safe through the whole ~1.27 MB transfer (min ~74.9 KB free).
+- After reboot the new slot boots as PENDING_VERIFY; it marks itself valid
+  only after successfully serving a request. A bad image is rolled back by
+  the bootloader on the next reset automatically.
+- Both slots must keep a working image: flash a *known-good* image into the
+  second slot first (OTA the clean build onto itself) before experimenting.
+
 ## Demo apps (all verified on hardware)
 
 | App | What it proves | Serial output |
@@ -204,15 +232,45 @@ tools/        build pipeline scripts (host compile, cross compile, flash, monito
 vendor/       git submodules (spinel)
 ```
 
+The vendored `vendor/spinel` is pinned to a snapshot of `matz/spinel`
+(6b6f4602c) and carries 3 ESP32 patches locally (see `patches/`). The
+patched commits are also published on the `esp32-shim` branch of the
+fork `github.com/tomash/spinel` — the vendored pin is deliberate; don't
+rebase it onto upstream master (upstream moves fast: 513 commits since
+the snapshot), and `patches/0050-*.patch` preserves the diff regardless.
+
 ## Status
 
-See `docs/plan.md`. M0–M5 complete: host pipeline, cross runtime, hardware demos
+See `docs/plan.md`. M0–M6 complete: host pipeline, cross runtime, hardware demos
 (GPIO/ADC/I2C), WiFi STA + web server in pure Ruby — all verified on the
 T-OI Plus, including the `/led/toggle` endpoint over the LAN and calibrated
 battery voltage matching the multimeter. M5 adds mDNS
 (`http://spinel-esp32.local/`), NTP wall-clock on the status page, GC
 thresholds tuned for the C3's 16 KB DRAM heap, and socket-error resilience —
-verified under an RST storm with zero reboots. Next: M6 (OTA updates).
+verified under an RST storm with zero reboots.
+
+M6 (OTA updates) is done end-to-end: `GET /ota/check`, `POST|GET /ota/start`
+(streams the new image from a LAN HTTP server into the inactive slot with
+sequential erase, heap-safe ~1.27 MB transfer), `GET /ota/status`,
+`GET /ota/reboot`, with bootloader rollback safety (the new image is
+auto-rolled back unless the running app proves itself by serving a request).
+Two real bugs were found and fixed on the way:
+
+- **connect() EIO from unaligned sockaddr** — lwIP's connect guard rejects
+  a GC-heap String pointer that isn't 4-byte aligned (ERR_ARG → EIO) before
+  any packet is sent. Fixed in `vendor/spinel` `lib/sp_io.c`
+  (`sp_sock_connect_nb_sa`): copy the sockaddr through an aligned
+  `struct sockaddr_storage` local; also reject oversized lengths with
+  EINVAL.
+- **OTA image parsing split the header across reads** — the ESP image
+  header + first segment can straddle a chunk boundary; magic 0xE9
+  checks failed intermittently (magic 20). Fixed in `app/wifi_status.rb`
+  by buffering `hsep` (header bytes) and `rest` separately, and closing
+  the data socket on all exit paths.
+
+Firmware layout: dual OTA slots 0x20000 / 0x1f0000 (0x1d0000 each),
+`firmware/main/sp_ota_adapter.c` wraps esp_ota, partitions in
+`firmware/partitions.csv`. Full story in `docs/plan-m6-ota.md`.
 
 ## Constraints honored
 

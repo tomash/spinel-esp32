@@ -19,26 +19,39 @@
 - [ ] Decide fiber scope: full asm switch vs no-fiber degraded mode first
 - Deliverable: `libspinel_rt.a` for each ISA + a compile-only smoke test.
 
-## M2 — "Hello UART" on hardware [blocked on hardware decision]
+## M2 — "Hello UART" on hardware [done 2026-10-11]
 
-- [ ] app/hello.rb → app.c → link against ESP runtime in an ESP-IDF
+- [x] app/hello.rb → app.c → link against ESP runtime in an ESP-IDF
       component (or bare linker script)
-- [ ] app_main adapter (B5), static main stack (B1), stdout over UART (B6)
-- [ ] Flash to a real board, see Ruby's puts over serial
+- [x] app_main adapter (B5), static main stack (B1), stdout over UART (B6)
+- [x] Flash to a real board, see Ruby's puts over serial
 - Deliverable: photo/photo-worthy first boot: `puts "Hello from Ruby"` @ 115200.
 
-## M3 — hardware bindings + real firmware
+## M3 — hardware bindings + real firmware [done 2026-10-11]
 
-- [ ] FFI surface for ESP-IDF: gpio, delay, i2c/spi, uart (ffi_const/ffi_func)
-- [ ] GC budget checks under load; heap-cap policy
-- [ ] Example apps: blink.rb, i2c sensor read, Wi-Fi scan (needs network shim)
+- [x] FFI surface for ESP-IDF: gpio, delay, i2c/spi, uart (ffi_const/ffi_func)
+- [x] GC budget checks under load; heap-cap policy
+- [x] Example apps: blink.rb, i2c sensor read, Wi-Fi scan (needs network shim)
 - Deliverable: a demo app that is *obviously* easier to write in Ruby than C.
 
-## M4 — upstream
+## M4 — network + status server + upstream prep [M4a done 2026-10-11; upstream PR still open]
 
+- [x] M4a: WiFi STA + status web server in pure Ruby (spinel->C->ESP32-C3)
+- [x] /led/toggle endpoint on the status server (M4b)
+- [x] M5: mDNS (spinel-esp32.local), NTP wall clock, GC tuning, socket-error
+      resilience (verified under RST storm, zero reboots)
+- [x] M6: OTA updates end-to-end — dual slots, streaming install with
+      sequential erase, /ota/check|start|status|reboot, bootloader rollback
+      (see docs/plan-m6-ota.md)
 - [ ] Rebase patches onto spinel master, open `--target=esp32` PR mirroring
       lib/wasi/ (they already accepted one constrained target in-tree)
 - Deliverable: PR to matz/spinel + a RubyKaigi-grade writeup.
+
+## M7 — Xtensa (T-Display port) [planned]
+
+- [ ] Port to classic ESP32 (LX6, xtensa): asm context switch or no-fiber
+      degraded mode; see docs/plan-xtensa-port.md
+- Deliverable: spinel app running on LilyGO T-Display.
 
 ## Standing decisions
 

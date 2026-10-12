@@ -117,7 +117,8 @@ OUT="$ROOT/build/rt-$TARGET"
 mkdir -p "$OUT"
 
 SP_SZ="-DSP_GC_STACK_MAX=4096 -DSP_GC_REMEMBERED_MAX=1024 -DSP_GC_PINNED_MAX=1024 \
-  -DSP_ALLOC_STATS=512 -DSP_STR_SHAPE_MAX=512"
+  -DSP_ALLOC_STATS=512 -DSP_STR_SHAPE_MAX=512 \
+  -DSP_DYN_SYMS_MAX=256 -DSP_EXC_STACK_MAX=8 -DSP_CATCH_STACK_MAX=8"
 
 # Arch flags: riscv32 needs the exact C3 march/mabi; xtensa (windowed ABI,
 # soft-float defaults) must get NONE for core selection -- ESP32's windowed
