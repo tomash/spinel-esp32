@@ -232,6 +232,13 @@ tools/        build pipeline scripts (host compile, cross compile, flash, monito
 vendor/       git submodules (spinel)
 ```
 
+The vendored `vendor/spinel` is pinned to a snapshot of `matz/spinel`
+(6b6f4602c) and carries 3 ESP32 patches locally (see `patches/`). The
+patched commits are also published on the `esp32-shim` branch of the
+fork `github.com/tomash/spinel` — the vendored pin is deliberate; don't
+rebase it onto upstream master (upstream moves fast: 513 commits since
+the snapshot), and `patches/0050-*.patch` preserves the diff regardless.
+
 ## Status
 
 See `docs/plan.md`. M0–M6 complete: host pipeline, cross runtime, hardware demos
