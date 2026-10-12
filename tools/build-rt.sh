@@ -1,5 +1,5 @@
 #!/bin/bash
-# tools/build-rt.sh -- cross-compile libspinel_rt.a for ESP32 (riscv32 first).
+# tools/build-rt.sh -- cross-compile libspinel_rt.a for ESP32 (riscv32/xtensa).
 #
 # Mirrors the upstream Makefile's archive rule (ar rcs over RT_MEMBERS +
 # regexp + platform objects) but with the ESP-IDF cross gcc and the
@@ -8,12 +8,32 @@
 # to fail (the lib/wasi precedent).
 #
 # Usage:
-#   tools/build-rt.sh                # riscv32 (esp32c3), needs IDF_PATH
-#   ESP_IDF=/path/to/esp-idf tools/build-rt.sh
-#   tools/build-rt.sh --probe        # just check what the cross libc has
+#   tools/build-rt.sh                # riscv32 (esp32c3), default, needs IDF_PATH
+#   tools/build-rt.sh esp32          # xtensa (classic ESP32, T-Display)
+#   ESP_IDF=/path/to/esp-idf tools/build-rt.sh <target>
+#   tools/build-rt.sh --probe        # check the cross libc surface (riscv32)
+#   tools/build-rt.sh esp32 --probe  # check the xtensa cross libc surface
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 IDF="${ESP_IDF:-$HOME/esp/esp-idf-v5.5}"
+
+# ---- target selection -----------------------------------------------------
+# riscv32 -> ESP32-C3 (default, unchanged invocation), esp32 -> Xtensa classic.
+TARGET=""
+PROBE=0
+for a in "$@"; do
+  case "$a" in
+    --probe) PROBE=1 ;;
+    *) TARGET="$a" ;;
+  esac
+done
+TARGET="${TARGET:-riscv32}"
+case "$TARGET" in
+  riscv32) GCC_NAME="riscv32-esp-elf-gcc" ;;
+  esp32)   GCC_NAME="xtensa-esp-elf-gcc" ;;
+  *) echo "error: unknown target '$TARGET' (riscv32|esp32)" >&2; exit 1 ;;
+esac
+AR_NAME="${GCC_NAME%gcc}ar"   # riscv32-esp-elf-ar / xtensa-esp-elf-ar
 
 # ---- toolchain discovery -------------------------------------------------
 if [[ ! -d "$IDF" ]]; then
@@ -23,26 +43,28 @@ fi
 # ESP-IDF's installer has used two layouts: ~/.espressif/tools/<name>/<ver>/<name>/
 # (v5.5 install.sh) and ~/.espressif/frameworks/<name>-<ver>/ (older/idf-env).
 # Search for the gcc binary itself so category dirs (e.g. tools/riscv32-esp-elf/)
-# can't shadow the real prefix.
+# can't shadow the real prefix. Match the EXACT gcc name (pitfall: the xtensa
+# and riscv32 toolchains live side by side under ~/.espressif; a loose
+# '*-esp-elf-gcc' find can pick the wrong one).
 CROSS=""
-for g in $(find "$HOME/.espressif" -maxdepth 6 -type f -name riscv32-esp-elf-gcc 2>/dev/null); do
+for g in $(find "$HOME/.espressif" -maxdepth 6 -type f -name "$GCC_NAME" 2>/dev/null); do
   b="$(dirname "$g")"
   CROSS="$(dirname "$b")"
-  [[ -x "$CROSS/bin/riscv32-esp-elf-ar" ]] && break
+  [[ -x "$CROSS/bin/$AR_NAME" ]] && break
   CROSS=""
 done
-if [[ -z "$CROSS" || ! -x "$CROSS/bin/riscv32-esp-elf-gcc" ]]; then
-  echo "error: riscv32-esp-elf-gcc not found under ~/.espressif" >&2
+if [[ -z "$CROSS" || ! -x "$CROSS/bin/$GCC_NAME" ]]; then
+  echo "error: $GCC_NAME not found under ~/.espressif" >&2
   exit 1
 fi
-CC="$CROSS/bin/riscv32-esp-elf-gcc"
-AR="$CROSS/bin/riscv32-esp-elf-ar"
+CC="$CROSS/bin/$GCC_NAME"
+AR="$CROSS/bin/$AR_NAME"
 echo "CC  = $CC"
 echo "AR  = $AR"
 "$CC" --version | head -1
 
 # ---- libc surface probe ---------------------------------------------------
-if [[ "${1:-}" == "--probe" ]]; then
+if [[ "$PROBE" == "1" ]]; then
   echo "== newlib header presence under the cross gcc:"
   for h in poll.h pthread.h malloc.h sched.h spawn.h pwd.h netdb.h stdio_ext.h \
            sys/mman.h sys/epoll.h sys/event.h sys/socket.h sys/wait.h sys/select.h \
@@ -87,15 +109,24 @@ fi
 # passes the same list via SPINEL_ESP32_CFLAGS.
 SHIM="$ROOT/shim/esp32"
 VENDOR="$ROOT/vendor/spinel"
-OUT="$ROOT/build/rt-riscv32"
+OUT="$ROOT/build/rt-$TARGET"
 mkdir -p "$OUT"
 
 SP_SZ="-DSP_GC_STACK_MAX=4096 -DSP_GC_REMEMBERED_MAX=1024 -DSP_GC_PINNED_MAX=1024 \
   -DSP_ALLOC_STATS=512 -DSP_STR_SHAPE_MAX=512"
 
+# Arch flags: riscv32 needs the exact C3 march/mabi; xtensa (windowed ABI,
+# soft-float defaults) must get NONE -- ESP32's windowed ABI is the default
+# and -march=esp32 is rejected by this compiler; the target multilib picks
+# the core config.
+ARCH_FLAGS=""
+if [[ "$TARGET" == "riscv32" ]]; then
+  ARCH_FLAGS="-march=rv32imc_zicsr_zifencei -mabi=ilp32"
+fi
+
 CFLAGS_RT="-O2 -ffunction-sections -fdata-sections -ffp-contract=off \
   -Wno-all \
-  -march=rv32imc_zicsr_zifencei -mabi=ilp32 \
+  $ARCH_FLAGS \
   -I$SHIM/include -I$VENDOR/lib -I$VENDOR/lib/regexp -I$VENDOR/lib/regexp/shim \
   -DSP_NO_SIGNALS -D__ESP32_SHIM__ $SP_SZ"
 
@@ -124,7 +155,18 @@ for m in $RT_MEMBERS; do compile "$VENDOR/lib/$m.c" "$OUT/$m.o"; done
 
 echo "== compiling shim"
 compile "$SHIM/src/sp_esp32_stub.c" "$OUT/sp_esp32_stub.o"
-"$CC" $CFLAGS_RT -x assembler-with-cpp -c "$SHIM/src/ucontext.S" -o "$OUT/ucontext.o"
+# Coroutine switch: RV32 uses src/ucontext.S; Xtensa has a windowed register
+# ABI and needs its own implementation. ucontext_xtensa.S is NOT YET WRITTEN
+# (see docs/plan-xtensa-port.md): no fiber-using app is compiled for esp32, so
+# the ucontext symbols are not pulled from this archive. Skip it and warn; the
+# archive stays linkable for apps without Fiber.
+UCFILE="$SHIM/src/ucontext.S"
+[[ "$TARGET" == "esp32" ]] && UCFILE="$SHIM/src/ucontext_xtensa.S"
+if [[ -f "$UCFILE" ]]; then
+  "$CC" $CFLAGS_RT -x assembler-with-cpp -c "$UCFILE" -o "$OUT/ucontext.o"
+else
+  echo "  !! $UCFILE missing -- skipping coroutine switch (no esp32 app uses Fiber)"
+fi
 
 echo "== archiving"
 rm -f "$OUT/libspinel_rt_esp32.a"
