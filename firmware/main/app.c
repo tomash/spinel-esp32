@@ -100,10 +100,21 @@ extern int sp_ffi_f28_esp32_ota_reboot(void) __asm__(SP_FFI_SYM("esp32_ota_reboo
 #include "stdint.h"
 #include "errno.h"
 
-/* ---- battery: GPIO2 = ADC1_CH2 on ESP32-C3 (NOT CH0; CH0 is GPIO0,
-   a floating Grove pin -- the M4 under-read bug: CH0 drifted ~1.1-1.3V
-   while the real divider output sat on CH2). Divider 2:1 (100k/100k),
-   same as battery.rb ---- */
+/* ---- battery ADC. Channel and calibration scheme differ per target:
+   - ESP32-C3: GPIO2 = ADC1_CH2 (NOT CH0; CH0 is GPIO0, a floating Grove
+     pin -- the M4 under-read bug: CH0 drifted ~1.1-1.3V while the real
+     divider output sat on CH2). Calibrated by the per-chip eFuse
+     curve-fitting scheme.
+   - Classic ESP32 (T-Display): battery divider is GPIO36 = ADC1_CH0, and
+     the chip has no curve-fitting scheme -- only line fitting with a
+     default reference. The Ruby-side pin constant is board-specific;
+     this C only needs to compile and read correctly on both.
+   Divider 2:1 (100k/100k), same as battery.rb ---- */
+#if CONFIG_IDF_TARGET_ESP32
+  #define WS_ADC_CHANNEL ADC_CHANNEL_0   /* GPIO36, ADC1_CH0 */
+#else
+  #define WS_ADC_CHANNEL ADC_CHANNEL_2   /* GPIO2,  ADC1_CH2 */
+#endif
 static adc_oneshot_unit_handle_t ws_adc_unit = NULL;
 static adc_cali_handle_t ws_adc_cali = NULL;
 static int ws_adc_inited = 0;
@@ -117,22 +128,31 @@ int esp32_adc_init(void) {
     adc_oneshot_chan_cfg_t chan = {
         .bitwidth = ADC_BITWIDTH_DEFAULT, .atten = ADC_ATTEN_DB_12,
     };
-    if (adc_oneshot_config_channel(ws_adc_unit, ADC_CHANNEL_2, &chan) != ESP_OK)
+    if (adc_oneshot_config_channel(ws_adc_unit, WS_ADC_CHANNEL, &chan) != ESP_OK)
         return -2;
+#if CONFIG_IDF_TARGET_ESP32
+    adc_cali_line_fitting_config_t cc = {
+        .unit_id = ADC_UNIT_1,
+        .bitwidth = ADC_BITWIDTH_DEFAULT, .atten = ADC_ATTEN_DB_12,
+        .default_vref = 1100, /* mV; used only if eFuse VREF is unburnt */
+    };
+    adc_cali_create_scheme_line_fitting(&cc, &ws_adc_cali); /* optional */
+#else
     adc_cali_curve_fitting_config_t cc = {
-        .unit_id = ADC_UNIT_1, .chan = ADC_CHANNEL_2,
+        .unit_id = ADC_UNIT_1, .chan = WS_ADC_CHANNEL,
         .bitwidth = ADC_BITWIDTH_DEFAULT, .atten = ADC_ATTEN_DB_12,
     };
     adc_cali_create_scheme_curve_fitting(&cc, &ws_adc_cali); /* optional */
+#endif
     ws_adc_inited = 1;
     return 0;
 }
 
-/* Calibrated GPIO2 pin voltage in mV, or negative on failure. */
+/* Calibrated battery pin voltage in mV, or negative on failure. */
 int esp32_adc_read_mv(void) {
     if (!ws_adc_inited) return -1;
     int raw = -1;
-    if (adc_oneshot_read(ws_adc_unit, ADC_CHANNEL_2, &raw) != ESP_OK) return -2;
+    if (adc_oneshot_read(ws_adc_unit, WS_ADC_CHANNEL, &raw) != ESP_OK) return -2;
     if (ws_adc_cali) {
         int mv = -1;
         if (adc_cali_raw_to_voltage(ws_adc_cali, raw, &mv) == ESP_OK) return mv;
@@ -834,887 +854,887 @@ static const char *sp_obj_inspect_sw(int cls_id, void *p) {
   }
 #line 1 "<spinel-synthesized>"
 }
-#line 403 "app/wifi_status.rb"
+#line 423 "app/wifi_status.rb"
 static inline sp_int sp_rb_read_int_le(const char * lv_buf) {
-#line 403 "app/wifi_status.rb"
+#line 423 "app/wifi_status.rb"
     SP_GC_SAVE();
-#line 403 "app/wifi_status.rb"
+#line 423 "app/wifi_status.rb"
     struct { sp_gc_frame_hdr h; void **p[1]; } _gcf = {{0, 1}}; SP_GC_ROOT_FRAME(_gcf);
-#line 403 "app/wifi_status.rb"
+#line 423 "app/wifi_status.rb"
     _gcf.p[0] = SP_GC_ENTRY_STR(lv_buf);
-#line 403 "app/wifi_status.rb"
+#line 423 "app/wifi_status.rb"
     sp_int lv_v = 0;
-#line 403 "app/wifi_status.rb"
-    sp_int lv_i__bp555 = 0;
-#line 405 "app/wifi_status.rb"
+#line 423 "app/wifi_status.rb"
+    sp_int lv_i__bp575 = 0;
+#line 425 "app/wifi_status.rb"
   lv_v = 0LL;
-#line 406 "app/wifi_status.rb"
+#line 426 "app/wifi_status.rb"
   {
-#line 406 "app/wifi_status.rb"
+#line 426 "app/wifi_status.rb"
     const char *_hcd1_0; sp_int _hcl1_0;
 #define _SP_HCR1() ({ { const char *_s = lv_buf; _hcd1_0 = _s; _hcl1_0 = _s ? (sp_int)sp_str_byte_len(_s) : 0; } (void)0; })
-#line 406 "app/wifi_status.rb"
+#line 426 "app/wifi_status.rb"
     _SP_HCR1();
-#line 406 "app/wifi_status.rb"
+#line 426 "app/wifi_status.rb"
   for (sp_int _t1 = 0; _t1 < 4LL; _t1++) {
-#line 406 "app/wifi_status.rb"
-    lv_i__bp555 = _t1;
-#line 406 "app/wifi_status.rb"
-    lv_v = ((lv_v | (sp_int_shl_ck(sp_oint_val(({ sp_int _t2 = lv_i__bp555; SP_LIKELY((unsigned long long)_t2 < (unsigned long long)_hcl1_0) ? sp_oint_of((sp_int)(unsigned char)_hcd1_0[_t2]) : sp_str_getbyte_opt(lv_buf, _t2); }), "<<"), (sp_int_mul(8LL, lv_i__bp555))))));
-#line 406 "app/wifi_status.rb"
+#line 426 "app/wifi_status.rb"
+    lv_i__bp575 = _t1;
+#line 426 "app/wifi_status.rb"
+    lv_v = ((lv_v | (sp_int_shl_ck(sp_oint_val(({ sp_int _t2 = lv_i__bp575; SP_LIKELY((unsigned long long)_t2 < (unsigned long long)_hcl1_0) ? sp_oint_of((sp_int)(unsigned char)_hcd1_0[_t2]) : sp_str_getbyte_opt(lv_buf, _t2); }), "<<"), (sp_int_mul(8LL, lv_i__bp575))))));
+#line 426 "app/wifi_status.rb"
   }
 #undef _SP_HCR1
-#line 406 "app/wifi_status.rb"
+#line 426 "app/wifi_status.rb"
   }
-#line 407 "app/wifi_status.rb"
+#line 427 "app/wifi_status.rb"
   return lv_v;
-#line 407 "app/wifi_status.rb"
+#line 427 "app/wifi_status.rb"
   return 0;
-#line 407 "app/wifi_status.rb"
+#line 427 "app/wifi_status.rb"
 }
-#line 410 "app/wifi_status.rb"
+#line 430 "app/wifi_status.rb"
 static inline SP_ALWAYS_INLINE const char * sp_rb_status_page(const char * lv_ssid, sp_oint lv_rssi, sp_int lv_chan, const char * lv_ip, sp_bool lv_led, sp_float lv_cell_v, const char * lv_time_s, const char * lv_slot_s, sp_RbVal lv_ota) {
-#line 410 "app/wifi_status.rb"
+#line 430 "app/wifi_status.rb"
     SP_GC_SAVE();
-#line 410 "app/wifi_status.rb"
+#line 430 "app/wifi_status.rb"
     struct { sp_gc_frame_hdr h; void **p[8]; } _gcf = {{0, 8}}; SP_GC_ROOT_FRAME(_gcf);
-#line 410 "app/wifi_status.rb"
+#line 430 "app/wifi_status.rb"
     _gcf.p[0] = SP_GC_ENTRY_STR(lv_ssid);
-#line 410 "app/wifi_status.rb"
+#line 430 "app/wifi_status.rb"
     _gcf.p[1] = SP_GC_ENTRY_STR(lv_ip);
-#line 410 "app/wifi_status.rb"
+#line 430 "app/wifi_status.rb"
     _gcf.p[2] = SP_GC_ENTRY_STR(lv_time_s);
-#line 410 "app/wifi_status.rb"
+#line 430 "app/wifi_status.rb"
     _gcf.p[3] = SP_GC_ENTRY_STR(lv_slot_s);
-#line 410 "app/wifi_status.rb"
+#line 430 "app/wifi_status.rb"
     _gcf.p[4] = SP_GC_ENTRY_RBVAL(lv_ota);
-#line 410 "app/wifi_status.rb"
+#line 430 "app/wifi_status.rb"
     const char * lv_led_s = NULL;
-#line 410 "app/wifi_status.rb"
+#line 430 "app/wifi_status.rb"
     _gcf.p[5] = SP_GC_ENTRY_STR(lv_led_s);
-#line 410 "app/wifi_status.rb"
+#line 430 "app/wifi_status.rb"
     const char * lv_rssi_s = NULL;
-#line 410 "app/wifi_status.rb"
+#line 430 "app/wifi_status.rb"
     _gcf.p[6] = SP_GC_ENTRY_STR(lv_rssi_s);
-#line 410 "app/wifi_status.rb"
+#line 430 "app/wifi_status.rb"
     const char * lv_ot = NULL;
-#line 410 "app/wifi_status.rb"
+#line 430 "app/wifi_status.rb"
     _gcf.p[7] = SP_GC_ENTRY_STR(lv_ot);
-#line 411 "app/wifi_status.rb"
+#line 431 "app/wifi_status.rb"
   lv_led_s = (lv_led ? ((char *)_fzl_0.d) : ((char *)_fzl_1.d));
-#line 412 "app/wifi_status.rb"
+#line 432 "app/wifi_status.rb"
   lv_rssi_s = (((lv_rssi).nil) ? ((char *)_fzl_2.d) : ({ const char *_t3 = sp_int_opt_to_s(lv_rssi); SP_GC_ROOT(_t3); size_t _l3 = sp_str_byte_len(_t3); size_t _cap4 = 0UL + _l3; char *_t4 = sp_str_alloc_raw(_cap4 + 1); char *_t5 = _t4; int _e6 = -1; _e6 = sp_str_enc_step_i(_e6, _t4, (size_t)(_t5 - _t4), _t3, _l3, sp_str_is_binary(_t3)); memcpy(_t5, _t3, _l3); _t5 += _l3; *_t5 = 0; sp_str_set_len(_t4, (size_t)(_t5 - _t4)); if (_e6 == 1) sp_str_mark_binary(_t4); (const char *)_t4; }));
-#line 413 "app/wifi_status.rb"
+#line 433 "app/wifi_status.rb"
   lv_ot = (sp_poly_truthy(lv_ota) ? ({ int _t7 = 0; const char *_t9 = ({ sp_RbVal _t8 = sp_poly_get_str(lv_ota, ((char *)_fzl_3.d)); _t7 = !(sp_poly_is_strbuf(_t8) || _t8.tag == SP_TAG_STR); sp_poly_to_s(_t8); }); SP_GC_ROOT(_t9); size_t _l9 = sp_str_byte_len(_t9); int _t10 = 0; const char *_t12 = ({ sp_RbVal _t11 = sp_poly_get_str(lv_ota, ((char *)_fzl_4.d)); _t10 = !(sp_poly_is_strbuf(_t11) || _t11.tag == SP_TAG_STR); sp_poly_to_s(_t11); }); SP_GC_ROOT(_t12); size_t _l12 = sp_str_byte_len(_t12); size_t _cap13 = 9UL + _l9 + _l12; char *_t13 = sp_str_alloc_raw(_cap13 + 1); char *_t14 = _t13; int _e15 = -1; if (!_t7) _e15 = sp_str_enc_step_i(_e15, _t13, (size_t)(_t14 - _t13), _t9, _l9, sp_str_is_binary(_t9)); memcpy(_t14, _t9, _l9); _t14 += _l9; _e15 = sp_str_enc_step_i(_e15, _t13, (size_t)(_t14 - _t13), " (", 2, 0); memcpy(_t14, " (", 2); _t14 += 2; if (!_t10) _e15 = sp_str_enc_step_i(_e15, _t13, (size_t)(_t14 - _t13), _t12, _l12, sp_str_is_binary(_t12)); memcpy(_t14, _t12, _l12); _t14 += _l12; _e15 = sp_str_enc_step_i(_e15, _t13, (size_t)(_t14 - _t13), " bytes)", 7, 0); memcpy(_t14, " bytes)", 7); _t14 += 7; *_t14 = 0; sp_str_set_len(_t13, (size_t)(_t14 - _t13)); if (_e15 == 1) sp_str_mark_binary(_t13); (const char *)_t13; }) : ((char *)_fzl_5.d));
-#line 414 "app/wifi_status.rb"
+#line 434 "app/wifi_status.rb"
   return ({ sp_int _t16 = cst_LED_PIN; const char *_t17 = sp_str_or_empty(lv_led_s); SP_GC_ROOT(_t17); size_t _l17 = sp_str_byte_len(_t17); const char *_t18 = sp_float_opt_to_s(sp_ofloat_of(lv_cell_v)); SP_GC_ROOT(_t18); size_t _l18 = sp_str_byte_len(_t18); const char *_t19 = sp_str_or_empty(lv_ssid); SP_GC_ROOT(_t19); size_t _l19 = sp_str_byte_len(_t19); const char *_t20 = sp_str_or_empty(lv_rssi_s); SP_GC_ROOT(_t20); size_t _l20 = sp_str_byte_len(_t20); sp_int _t21 = lv_chan; const char *_t22 = sp_str_or_empty(lv_ip); SP_GC_ROOT(_t22); size_t _l22 = sp_str_byte_len(_t22); const char *_t23 = sp_str_or_empty(lv_time_s); SP_GC_ROOT(_t23); size_t _l23 = sp_str_byte_len(_t23); const char *_t24 = sp_str_or_empty(lv_slot_s); SP_GC_ROOT(_t24); size_t _l24 = sp_str_byte_len(_t24); const char *_t25 = sp_str_or_empty(lv_ot); SP_GC_ROOT(_t25); size_t _l25 = sp_str_byte_len(_t25); const char *_t26 = sp_str_or_empty(lv_led_s); SP_GC_ROOT(_t26); size_t _l26 = sp_str_byte_len(_t26); size_t _cap27 = 824UL + _l17 + _l18 + _l19 + _l20 + _l22 + _l23 + _l24 + _l25 + _l26; char *_t27 = sp_str_alloc_raw(_cap27 + 1); char *_t28 = _t27; int _e29 = 0; memcpy(_t28, "<!doctype html><html><head><title>spinel-esp32</title></head>\n", 62); _t28 += 62; _e29 = sp_str_enc_step_i(_e29, _t27, (size_t)(_t28 - _t27), "<body style=\"font-family:monospace;background:#111;color:#eee;padding:2em\">\n", 76, 0); memcpy(_t28, "<body style=\"font-family:monospace;background:#111;color:#eee;padding:2em\">\n", 76); _t28 += 76; _e29 = sp_str_enc_step_i(_e29, _t27, (size_t)(_t28 - _t27), "<h1>T-OI Plus / spinel-esp32</h1>\n", 34, 0); memcpy(_t28, "<h1>T-OI Plus / spinel-esp32</h1>\n", 34); _t28 += 34; _e29 = sp_str_enc_step_i(_e29, _t27, (size_t)(_t28 - _t27), "<table>\n", 8, 0); memcpy(_t28, "<table>\n", 8); _t28 += 8; _e29 = sp_str_enc_step_i(_e29, _t27, (size_t)(_t28 - _t27), "<tr><td>LED (GPIO", 17, 0); memcpy(_t28, "<tr><td>LED (GPIO", 17); _t28 += 17; _t28 = sp_w_int(_t28, _t16); _e29 = sp_str_enc_step_i(_e29, _t27, (size_t)(_t28 - _t27), ")</td><td>", 10, 0); memcpy(_t28, ")</td><td>", 10); _t28 += 10; _e29 = sp_str_enc_step_i(_e29, _t27, (size_t)(_t28 - _t27), _t17, _l17, sp_str_is_binary(_t17)); memcpy(_t28, _t17, _l17); _t28 += _l17; _e29 = sp_str_enc_step_i(_e29, _t27, (size_t)(_t28 - _t27), "</td></tr>\n", 11, 0); memcpy(_t28, "</td></tr>\n", 11); _t28 += 11; _e29 = sp_str_enc_step_i(_e29, _t27, (size_t)(_t28 - _t27), "<tr><td>Battery cell</td><td>", 29, 0); memcpy(_t28, "<tr><td>Battery cell</td><td>", 29); _t28 += 29; _e29 = sp_str_enc_step_i(_e29, _t27, (size_t)(_t28 - _t27), _t18, _l18, sp_str_is_binary(_t18)); memcpy(_t28, _t18, _l18); _t28 += _l18; _e29 = sp_str_enc_step_i(_e29, _t27, (size_t)(_t28 - _t27), " V</td></tr>\n", 13, 0); memcpy(_t28, " V</td></tr>\n", 13); _t28 += 13; _e29 = sp_str_enc_step_i(_e29, _t27, (size_t)(_t28 - _t27), "<tr><td>WiFi SSID</td><td>", 26, 0); memcpy(_t28, "<tr><td>WiFi SSID</td><td>", 26); _t28 += 26; _e29 = sp_str_enc_step_i(_e29, _t27, (size_t)(_t28 - _t27), _t19, _l19, sp_str_is_binary(_t19)); memcpy(_t28, _t19, _l19); _t28 += _l19; _e29 = sp_str_enc_step_i(_e29, _t27, (size_t)(_t28 - _t27), "</td></tr>\n", 11, 0); memcpy(_t28, "</td></tr>\n", 11); _t28 += 11; _e29 = sp_str_enc_step_i(_e29, _t27, (size_t)(_t28 - _t27), "<tr><td>RSSI</td><td>", 21, 0); memcpy(_t28, "<tr><td>RSSI</td><td>", 21); _t28 += 21; _e29 = sp_str_enc_step_i(_e29, _t27, (size_t)(_t28 - _t27), _t20, _l20, sp_str_is_binary(_t20)); memcpy(_t28, _t20, _l20); _t28 += _l20; _e29 = sp_str_enc_step_i(_e29, _t27, (size_t)(_t28 - _t27), " dBm</td></tr>\n", 15, 0); memcpy(_t28, " dBm</td></tr>\n", 15); _t28 += 15; _e29 = sp_str_enc_step_i(_e29, _t27, (size_t)(_t28 - _t27), "<tr><td>Channel</td><td>", 24, 0); memcpy(_t28, "<tr><td>Channel</td><td>", 24); _t28 += 24; _t28 = sp_w_int(_t28, _t21); _e29 = sp_str_enc_step_i(_e29, _t27, (size_t)(_t28 - _t27), "</td></tr>\n", 11, 0); memcpy(_t28, "</td></tr>\n", 11); _t28 += 11; _e29 = sp_str_enc_step_i(_e29, _t27, (size_t)(_t28 - _t27), "<tr><td>IP</td><td>", 19, 0); memcpy(_t28, "<tr><td>IP</td><td>", 19); _t28 += 19; _e29 = sp_str_enc_step_i(_e29, _t27, (size_t)(_t28 - _t27), _t22, _l22, sp_str_is_binary(_t22)); memcpy(_t28, _t22, _l22); _t28 += _l22; _e29 = sp_str_enc_step_i(_e29, _t27, (size_t)(_t28 - _t27), "</td></tr>\n", 11, 0); memcpy(_t28, "</td></tr>\n", 11); _t28 += 11; _e29 = sp_str_enc_step_i(_e29, _t27, (size_t)(_t28 - _t27), "<tr><td>Time (UTC)</td><td>", 27, 0); memcpy(_t28, "<tr><td>Time (UTC)</td><td>", 27); _t28 += 27; _e29 = sp_str_enc_step_i(_e29, _t27, (size_t)(_t28 - _t27), _t23, _l23, sp_str_is_binary(_t23)); memcpy(_t28, _t23, _l23); _t28 += _l23; _e29 = sp_str_enc_step_i(_e29, _t27, (size_t)(_t28 - _t27), "</td></tr>\n", 11, 0); memcpy(_t28, "</td></tr>\n", 11); _t28 += 11; _e29 = sp_str_enc_step_i(_e29, _t27, (size_t)(_t28 - _t27), "<tr><td>Running slot</td><td>", 29, 0); memcpy(_t28, "<tr><td>Running slot</td><td>", 29); _t28 += 29; _e29 = sp_str_enc_step_i(_e29, _t27, (size_t)(_t28 - _t27), _t24, _l24, sp_str_is_binary(_t24)); memcpy(_t28, _t24, _l24); _t28 += _l24; _e29 = sp_str_enc_step_i(_e29, _t27, (size_t)(_t28 - _t27), "</td></tr>\n", 11, 0); memcpy(_t28, "</td></tr>\n", 11); _t28 += 11; _e29 = sp_str_enc_step_i(_e29, _t27, (size_t)(_t28 - _t27), "<tr><td>Last OTA</td><td>", 25, 0); memcpy(_t28, "<tr><td>Last OTA</td><td>", 25); _t28 += 25; _e29 = sp_str_enc_step_i(_e29, _t27, (size_t)(_t28 - _t27), _t25, _l25, sp_str_is_binary(_t25)); memcpy(_t28, _t25, _l25); _t28 += _l25; _e29 = sp_str_enc_step_i(_e29, _t27, (size_t)(_t28 - _t27), "</td></tr>\n", 11, 0); memcpy(_t28, "</td></tr>\n", 11); _t28 += 11; _e29 = sp_str_enc_step_i(_e29, _t27, (size_t)(_t28 - _t27), "</table>\n", 9, 0); memcpy(_t28, "</table>\n", 9); _t28 += 9; _e29 = sp_str_enc_step_i(_e29, _t27, (size_t)(_t28 - _t27), "<p><a href=\"/led/toggle\" style=\"background:#eee;color:#111;padding:4px 12px;\n", 77, 0); memcpy(_t28, "<p><a href=\"/led/toggle\" style=\"background:#eee;color:#111;padding:4px 12px;\n", 77); _t28 += 77; _e29 = sp_str_enc_step_i(_e29, _t27, (size_t)(_t28 - _t27), "   text-decoration:none\">Toggle LED (currently ", 47, 0); memcpy(_t28, "   text-decoration:none\">Toggle LED (currently ", 47); _t28 += 47; _e29 = sp_str_enc_step_i(_e29, _t27, (size_t)(_t28 - _t27), _t26, _l26, sp_str_is_binary(_t26)); memcpy(_t28, _t26, _l26); _t28 += _l26; _e29 = sp_str_enc_step_i(_e29, _t27, (size_t)(_t28 - _t27), ")</a></p>\n", 10, 0); memcpy(_t28, ")</a></p>\n", 10); _t28 += 10; _e29 = sp_str_enc_step_i(_e29, _t27, (size_t)(_t28 - _t27), "<p style=\"color:#999\">OTA: /ota/start?url=host:port/spinel.bin &middot;\n", 72, 0); memcpy(_t28, "<p style=\"color:#999\">OTA: /ota/start?url=host:port/spinel.bin &middot;\n", 72); _t28 += 72; _e29 = sp_str_enc_step_i(_e29, _t27, (size_t)(_t28 - _t27), "   /ota/status &middot; /ota/reboot</p>\n", 40, 0); memcpy(_t28, "   /ota/status &middot; /ota/reboot</p>\n", 40); _t28 += 40; _e29 = sp_str_enc_step_i(_e29, _t27, (size_t)(_t28 - _t27), "</body></html>\n", 15, 0); memcpy(_t28, "</body></html>\n", 15); _t28 += 15; *_t28 = 0; sp_str_set_len(_t27, (size_t)(_t28 - _t27)); if (_e29 == 1) sp_str_mark_binary(_t27); (const char *)_t27; });
-#line 414 "app/wifi_status.rb"
+#line 434 "app/wifi_status.rb"
   return NULL;
-#line 414 "app/wifi_status.rb"
+#line 434 "app/wifi_status.rb"
 }
-#line 486 "app/wifi_status.rb"
+#line 506 "app/wifi_status.rb"
 static inline SP_ALWAYS_INLINE sp_RbVal sp_ota_error(sp_RbVal lv_client, sp_int lv_code, const char * lv_text) {
-#line 486 "app/wifi_status.rb"
+#line 506 "app/wifi_status.rb"
     SP_GC_SAVE();
-#line 486 "app/wifi_status.rb"
+#line 506 "app/wifi_status.rb"
     struct { sp_gc_frame_hdr h; void **p[3]; } _gcf = {{0, 3}}; SP_GC_ROOT_FRAME(_gcf);
-#line 486 "app/wifi_status.rb"
+#line 506 "app/wifi_status.rb"
     _gcf.p[0] = SP_GC_ENTRY_RBVAL(lv_client);
-#line 486 "app/wifi_status.rb"
+#line 506 "app/wifi_status.rb"
     _gcf.p[1] = SP_GC_ENTRY_STR(lv_text);
-#line 487 "app/wifi_status.rb"
+#line 507 "app/wifi_status.rb"
   const char * _t36 = ({ sp_int _t30 = lv_code; const char *_t31 = sp_str_or_empty(sp_StrArray_get(sp_str_split_ws(lv_text), 0LL)); SP_GC_ROOT(_t31); size_t _l31 = sp_str_byte_len(_t31); const char *_t32 = sp_str_or_empty(lv_text); SP_GC_ROOT(_t32); size_t _l32 = sp_str_byte_len(_t32); size_t _cap33 = 81UL + _l31 + _l32; char *_t33 = sp_str_alloc_raw(_cap33 + 1); char *_t34 = _t33; int _e35 = 0; memcpy(_t34, "HTTP/1.1 ", 9); _t34 += 9; _t34 = sp_w_int(_t34, _t30); _e35 = sp_str_enc_step_i(_e35, _t33, (size_t)(_t34 - _t33), " ", 1, 0); memcpy(_t34, " ", 1); _t34 += 1; _e35 = sp_str_enc_step_i(_e35, _t33, (size_t)(_t34 - _t33), _t31, _l31, sp_str_is_binary(_t31)); memcpy(_t34, _t31, _l31); _t34 += _l31; _e35 = sp_str_enc_step_i(_e35, _t33, (size_t)(_t34 - _t33), "\r\n", 2, 0); memcpy(_t34, "\r\n", 2); _t34 += 2; _e35 = sp_str_enc_step_i(_e35, _t33, (size_t)(_t34 - _t33), "Content-Type: text/plain\r\nConnection: close\r\n\r\n", 47, 0); memcpy(_t34, "Content-Type: text/plain\r\nConnection: close\r\n\r\n", 47); _t34 += 47; _e35 = sp_str_enc_step_i(_e35, _t33, (size_t)(_t34 - _t33), _t32, _l32, sp_str_is_binary(_t32)); memcpy(_t34, _t32, _l32); _t34 += _l32; _e35 = sp_str_enc_step_i(_e35, _t33, (size_t)(_t34 - _t33), "\n", 1, 0); memcpy(_t34, "\n", 1); _t34 += 1; *_t34 = 0; sp_str_set_len(_t33, (size_t)(_t34 - _t33)); if (_e35 == 1) sp_str_mark_binary(_t33); (const char *)_t33; }); _gcf.p[2] = SP_GC_ENTRY_PTR(_t36);
-#line 487 "app/wifi_status.rb"
+#line 507 "app/wifi_status.rb"
   ({ sp_File *_t37 = sp_poly_as_io(lv_client, "write"); sp_File_write_bin(_t37, _t36); });
-#line 489 "app/wifi_status.rb"
+#line 509 "app/wifi_status.rb"
   return ({ sp_RbVal _t39 = lv_client; SP_GC_ROOT_RBVAL(_t39); _t39.tag == SP_TAG_OBJ && _t39.cls_id == SP_BUILTIN_QUEUE ? ((void)sp_Queue_close((sp_queue *)_t39.v.p), _t39) : _t39.tag == SP_TAG_OBJ && _t39.cls_id == SP_BUILTIN_DIR ? ((void)sp_Dir_close((sp_Dir *)_t39.v.p), sp_box_nil()) : ({ sp_File *_t38 = sp_poly_as_io(_t39, "close"); (void)sp_File_close(_t38); sp_box_nil(); }); });
-#line 489 "app/wifi_status.rb"
+#line 509 "app/wifi_status.rb"
   return sp_box_nil();
-#line 489 "app/wifi_status.rb"
+#line 509 "app/wifi_status.rb"
 }
-#line 511 "app/wifi_status.rb"
+#line 531 "app/wifi_status.rb"
 static sp_RbVal sp_ota_connect(const char * lv_host, sp_int lv_port, sp_int lv_timeout_ms) {
-#line 511 "app/wifi_status.rb"
+#line 531 "app/wifi_status.rb"
     SP_GC_SAVE();
-#line 511 "app/wifi_status.rb"
+#line 531 "app/wifi_status.rb"
     struct { sp_gc_frame_hdr h; void **p[5]; } _gcf = {{0, 5}}; SP_GC_ROOT_FRAME(_gcf);
-#line 511 "app/wifi_status.rb"
+#line 531 "app/wifi_status.rb"
     _gcf.p[0] = SP_GC_ENTRY_STR(lv_host);
-#line 511 "app/wifi_status.rb"
+#line 531 "app/wifi_status.rb"
     const char * lv_sa = NULL;
-#line 511 "app/wifi_status.rb"
+#line 531 "app/wifi_status.rb"
     _gcf.p[1] = SP_GC_ENTRY_STR(lv_sa);
-#line 511 "app/wifi_status.rb"
+#line 531 "app/wifi_status.rb"
     sp_File *volatile  lv_sock = NULL;
-#line 511 "app/wifi_status.rb"
+#line 531 "app/wifi_status.rb"
     _gcf.p[2] = SP_GC_ENTRY_PTR(lv_sock);
-#line 511 "app/wifi_status.rb"
+#line 531 "app/wifi_status.rb"
     volatile sp_int lv_deadline = 0;
-#line 511 "app/wifi_status.rb"
+#line 531 "app/wifi_status.rb"
     volatile sp_RbVal lv_rc = sp_box_nil();
-#line 511 "app/wifi_status.rb"
+#line 531 "app/wifi_status.rb"
     _gcf.p[3] = SP_GC_ENTRY_RBVAL(lv_rc);
-#line 511 "app/wifi_status.rb"
+#line 531 "app/wifi_status.rb"
     sp_Exception *volatile  lv_e = NULL;
-#line 511 "app/wifi_status.rb"
+#line 531 "app/wifi_status.rb"
     _gcf.p[4] = SP_GC_ENTRY_PTR(lv_e);
-#line 512 "app/wifi_status.rb"
+#line 532 "app/wifi_status.rb"
   lv_sa = sp_sock_pack_sockaddr_in(lv_port, lv_host);
-#line 513 "app/wifi_status.rb"
+#line 533 "app/wifi_status.rb"
   lv_sock = NULL;
-#line 514 "app/wifi_status.rb"
+#line 534 "app/wifi_status.rb"
   sp_RbVal _t41 = sp_box_nil();
-#line 514 "app/wifi_status.rb"
+#line 534 "app/wifi_status.rb"
   sp_exc_check_depth();
-#line 514 "app/wifi_status.rb"
+#line 534 "app/wifi_status.rb"
   sp_exc_rootmark[sp_exc_top] = sp_gc_nroots; sp_rescue_mark[sp_exc_top] = sp_rescue_sp;
-#line 514 "app/wifi_status.rb"
+#line 534 "app/wifi_status.rb"
   sp_exc_msg[sp_exc_top] = 0; sp_exc_obj[sp_exc_top] = 0; sp_exc_top++;
-#line 514 "app/wifi_status.rb"
+#line 534 "app/wifi_status.rb"
   if (setjmp(sp_exc_stack[sp_exc_top-1]) == 0) {
-#line 515 "app/wifi_status.rb"
+#line 535 "app/wifi_status.rb"
     lv_sock = sp_sock_new(({ sp_int _sc = sp_sock_const("AF_INET"); if (_sc < 0) sp_raise_cls("NameError", "uninitialized constant Socket::AF_INET"); _sc; }), ({ sp_int _sc = sp_sock_const("SOCK_STREAM"); if (_sc < 0) sp_raise_cls("NameError", "uninitialized constant Socket::SOCK_STREAM"); _sc; }), 0LL);
-#line 516 "app/wifi_status.rb"
+#line 536 "app/wifi_status.rb"
     lv_deadline = sp_int_add(((sp_int)(sp_ffi_f11_esp32_millis())), lv_timeout_ms);
-#line 517 "app/wifi_status.rb"
+#line 537 "app/wifi_status.rb"
     while (1) {
-#line 518 "app/wifi_status.rb"
+#line 538 "app/wifi_status.rb"
       lv_rc = ({ if (SP_UNLIKELY((lv_sock) == NULL)) sp_raise_nomethod(sp_nomethod_msg("connect_nonblock", sp_box_nil())); ({ const char *_t45 = lv_sa; sp_oint _n46 = sp_sock_connect_nb_sa(lv_sock, _t45, (sp_int)sp_str_byte_len(_t45), 0); _n46.nil ? sp_box_sym(sp_sym_intern("wait_writable")) : sp_box_int(_n46.v); }); });
-#line 519 "app/wifi_status.rb"
+#line 539 "app/wifi_status.rb"
       if (sp_poly_eq(lv_rc, sp_box_int(0LL))) {
-#line 519 "app/wifi_status.rb"
+#line 539 "app/wifi_status.rb"
         { sp_RbVal _t47 = sp_box_nullable_obj((void *)(lv_sock), SP_BUILTIN_IO); sp_exc_top -= 1; return _t47; }
-#line 519 "app/wifi_status.rb"
+#line 539 "app/wifi_status.rb"
       }
-#line 523 "app/wifi_status.rb"
+#line 543 "app/wifi_status.rb"
       if ((((sp_int)(sp_ffi_f11_esp32_millis())) > lv_deadline)) {
-#line 523 "app/wifi_status.rb"
+#line 543 "app/wifi_status.rb"
         sp_raise(sp_exc_msg_given(({ sp_int _t49 = lv_timeout_ms; size_t _cap50 = 43UL; char *_t50 = sp_str_alloc_raw(_cap50 + 1); char *_t51 = _t50; memcpy(_t51, "connect deadline (", 18); _t51 += 18; _t51 = sp_w_int(_t51, _t49); memcpy(_t51, " ms)", 4); _t51 += 4; *_t51 = 0; sp_str_set_len(_t50, (size_t)(_t51 - _t50)); (const char *)_t50; })));
-#line 523 "app/wifi_status.rb"
+#line 543 "app/wifi_status.rb"
       }
-#line 524 "app/wifi_status.rb"
-      ((sp_int)(({ int _b53_0 = ((int)(50LL)); int _b53_r; sp_native_enter(); _b53_r = sp_ffi_f10_esp32_delay_ms(_b53_0); sp_native_leave(); _b53_r; })));
-#line 524 "app/wifi_status.rb"
-    }
-#line 524 "app/wifi_status.rb"
-    sp_exc_top--;
-#line 524 "app/wifi_status.rb"
-  }
-#line 524 "app/wifi_status.rb"
-  else {
-#line 524 "app/wifi_status.rb"
-    sp_exc_top--;
-#line 524 "app/wifi_status.rb"
-    sp_gc_nroots = sp_exc_rootmark[sp_exc_top]; sp_rescue_sp = sp_rescue_mark[sp_exc_top];
-#line 524 "app/wifi_status.rb"
-    if (sp_unwind_kind == SP_UNWIND_NONE) {
-#line 524 "app/wifi_status.rb"
-      if (strcmp((const char *)sp_last_exc_cls, "FiberKillSignal") == 0) sp_raise_cls("FiberKillSignal", sp_exc_msg[sp_exc_top]);
-#line 524 "app/wifi_status.rb"
-      else {
-#line 524 "app/wifi_status.rb"
-        const char *_rcls_54 = (const char *)sp_last_exc_cls; (void)_rcls_54;
-#line 524 "app/wifi_status.rb"
-        const char *_rmsg_54 = sp_exc_msg[sp_exc_top]; (void)_rmsg_54;
-#line 524 "app/wifi_status.rb"
-        if (sp_exc_is_standard_error(_rcls_54)) {
-#line 524 "app/wifi_status.rb"
-          sp_Exception *_ce_54 = sp_exc_obj[sp_exc_top] ? (sp_Exception *)sp_exc_obj[sp_exc_top] : sp_exc_new_for_catch(_rcls_54, _rmsg_54);
-#line 524 "app/wifi_status.rb"
-          sp_rescue_push((void *)_ce_54);
-#line 524 "app/wifi_status.rb"
-          if (_ce_54->backtrace == NULL) { sp_StrArray *_bt = sp_backtrace_captured(); sp_gc_wb((void *)_ce_54); _ce_54->backtrace = _bt; }
-#line 524 "app/wifi_status.rb"
-          if (!_ce_54->cause) { sp_gc_wb((void *)_ce_54); _ce_54->cause = (sp_Exception *)sp_pending_cause; } sp_pending_cause = NULL;
-#line 524 "app/wifi_status.rb"
-          lv_e = _ce_54;
-#line 533 "app/wifi_status.rb"
-          sp_Exception *_t55 = lv_e;
-#line 533 "app/wifi_status.rb"
-          sp_Exception *_t57 = lv_e;
-#line 533 "app/wifi_status.rb"
-          { const char *_ps = (const char *)(({ const char *_t56 = sp_class_to_s(((sp_Class){0, _t55 ? sp_exc_class_name(_t55) : SPL("NilClass")})); SP_GC_ROOT(_t56); size_t _l56 = sp_str_byte_len(_t56); const char *_t58 = sp_str_or_empty((_t57 ? sp_exc_message(_t57) : sp_str_empty)); SP_GC_ROOT(_t58); size_t _l58 = sp_str_byte_len(_t58); size_t _cap59 = 40UL + _l56 + _l58; char *_t59 = sp_str_alloc_raw(_cap59 + 1); char *_t60 = _t59; int _e61 = 0; memcpy(_t60, "ota: ota_connect failed: ", 25); _t60 += 25; _e61 = sp_str_enc_step_i(_e61, _t59, (size_t)(_t60 - _t59), _t56, _l56, sp_str_is_binary(_t56)); memcpy(_t60, _t56, _l56); _t60 += _l56; _e61 = sp_str_enc_step_i(_e61, _t59, (size_t)(_t60 - _t59), ": ", 2, 0); memcpy(_t60, ": ", 2); _t60 += 2; _e61 = sp_str_enc_step_i(_e61, _t59, (size_t)(_t60 - _t59), _t58, _l58, sp_str_is_binary(_t58)); memcpy(_t60, _t58, _l58); _t60 += _l58; _e61 = sp_str_enc_step_i(_e61, _t59, (size_t)(_t60 - _t59), " (closing fd)", 13, 0); memcpy(_t60, " (closing fd)", 13); _t60 += 13; *_t60 = 0; sp_str_set_len(_t59, (size_t)(_t60 - _t59)); if (_e61 == 1) sp_str_mark_binary(_t59); (const char *)_t59; })); sp_puts_str_line(_ps); }
-#line 534 "app/wifi_status.rb"
-          sp_exc_check_depth();
-#line 534 "app/wifi_status.rb"
-          sp_exc_rootmark[sp_exc_top] = sp_gc_nroots; sp_rescue_mark[sp_exc_top] = sp_rescue_sp;
-#line 534 "app/wifi_status.rb"
-          sp_exc_msg[sp_exc_top] = 0; sp_exc_obj[sp_exc_top] = 0; sp_exc_top++;
-#line 534 "app/wifi_status.rb"
-          if (setjmp(sp_exc_stack[sp_exc_top-1]) == 0) {
-#line 535 "app/wifi_status.rb"
-            if (((lv_sock) != 0)) {
-#line 535 "app/wifi_status.rb"
-              ({ sp_File_close(lv_sock); sp_box_nil(); });
-#line 535 "app/wifi_status.rb"
-            }
-#line 535 "app/wifi_status.rb"
-            sp_exc_top--;
-#line 535 "app/wifi_status.rb"
-          }
-#line 535 "app/wifi_status.rb"
-          else {
-#line 535 "app/wifi_status.rb"
-            sp_exc_top--;
-#line 535 "app/wifi_status.rb"
-            sp_gc_nroots = sp_exc_rootmark[sp_exc_top]; sp_rescue_sp = sp_rescue_mark[sp_exc_top];
-#line 535 "app/wifi_status.rb"
-            if (sp_unwind_kind == SP_UNWIND_NONE) {
-#line 535 "app/wifi_status.rb"
-              if (strcmp((const char *)sp_last_exc_cls, "FiberKillSignal") == 0) sp_raise_cls("FiberKillSignal", sp_exc_msg[sp_exc_top]);
-#line 535 "app/wifi_status.rb"
-              else {
-#line 535 "app/wifi_status.rb"
-                const char *_rcls_63 = (const char *)sp_last_exc_cls; (void)_rcls_63;
-#line 535 "app/wifi_status.rb"
-                const char *_rmsg_63 = sp_exc_msg[sp_exc_top]; (void)_rmsg_63;
-#line 535 "app/wifi_status.rb"
-                if (sp_exc_cls_matches(_rcls_63, "StandardError")) {
-#line 535 "app/wifi_status.rb"
-                  sp_Exception *_ce_63 = sp_exc_obj[sp_exc_top] ? (sp_Exception *)sp_exc_obj[sp_exc_top] : sp_exc_new_for_catch(_rcls_63, _rmsg_63);
-#line 535 "app/wifi_status.rb"
-                  sp_rescue_push((void *)_ce_63);
-#line 535 "app/wifi_status.rb"
-                  if (_ce_63->backtrace == NULL) { sp_StrArray *_bt = sp_backtrace_captured(); sp_gc_wb((void *)_ce_63); _ce_63->backtrace = _bt; }
-#line 535 "app/wifi_status.rb"
-                  if (!_ce_63->cause) { sp_gc_wb((void *)_ce_63); _ce_63->cause = (sp_Exception *)sp_pending_cause; } sp_pending_cause = NULL;
-#line 537 "app/wifi_status.rb"
-                  0;
-#line 537 "app/wifi_status.rb"
-                  sp_rescue_sp--;
-#line 537 "app/wifi_status.rb"
-                }
-#line 537 "app/wifi_status.rb"
-                else {
-#line 537 "app/wifi_status.rb"
-                  sp_pending_exc_obj = sp_exc_obj[sp_exc_top]; sp_bt_keep = 1;
-#line 537 "app/wifi_status.rb"
-                  sp_raise_cls(_rcls_63, _rmsg_63);
-#line 537 "app/wifi_status.rb"
-                }
-#line 537 "app/wifi_status.rb"
-              }
-#line 537 "app/wifi_status.rb"
-            }
-#line 537 "app/wifi_status.rb"
-            if (sp_unwind_kind != SP_UNWIND_NONE) sp_unwind_resume();
-#line 537 "app/wifi_status.rb"
-          }
-#line 539 "app/wifi_status.rb"
-          (sp_reraise_current = 1, sp_raise_cls(_rcls_54, _rmsg_54));
-#line 539 "app/wifi_status.rb"
-          sp_rescue_sp--;
-#line 539 "app/wifi_status.rb"
-        }
-#line 539 "app/wifi_status.rb"
-        else {
-#line 539 "app/wifi_status.rb"
-          sp_pending_exc_obj = sp_exc_obj[sp_exc_top]; sp_bt_keep = 1;
-#line 539 "app/wifi_status.rb"
-          sp_raise_cls(_rcls_54, _rmsg_54);
-#line 539 "app/wifi_status.rb"
-        }
-#line 539 "app/wifi_status.rb"
-      }
-#line 539 "app/wifi_status.rb"
-    }
-#line 539 "app/wifi_status.rb"
-    if (sp_unwind_kind != SP_UNWIND_NONE) sp_unwind_resume();
-#line 539 "app/wifi_status.rb"
-  }
-#line 539 "app/wifi_status.rb"
-  return _t41;
-#line 539 "app/wifi_status.rb"
-  return sp_box_nil();
-#line 539 "app/wifi_status.rb"
-}
-#line 543 "app/wifi_status.rb"
-static sp_StrPolyHash * sp_ota_download(const char * lv_host, sp_int lv_port, const char * lv_path, sp_bool lv_force) {
-#line 543 "app/wifi_status.rb"
-    SP_GC_SAVE();
-#line 543 "app/wifi_status.rb"
-    struct { sp_gc_frame_hdr h; void **p[11]; } _gcf = {{0, 11}}; SP_GC_ROOT_FRAME(_gcf);
-#line 543 "app/wifi_status.rb"
-    sp_re_frame _sp_rf SP_CLEANUP(sp_re_frame_pop); sp_re_frame_push(&_sp_rf);
-#line 543 "app/wifi_status.rb"
-    _gcf.p[0] = SP_GC_ENTRY_STR(lv_host);
-#line 543 "app/wifi_status.rb"
-    _gcf.p[1] = SP_GC_ENTRY_STR(lv_path);
-#line 543 "app/wifi_status.rb"
-    volatile sp_oint lv_total = sp_oint_of(0);
-#line 543 "app/wifi_status.rb"
-    volatile sp_int lv_written = 0;
-#line 543 "app/wifi_status.rb"
-    volatile sp_bool lv_begun = 0;
-#line 543 "app/wifi_status.rb"
-    sp_int lv_idle_ms = 0;
-#line 543 "app/wifi_status.rb"
-    volatile sp_RbVal lv_sock = sp_box_nil();
-#line 543 "app/wifi_status.rb"
-    _gcf.p[2] = SP_GC_ENTRY_RBVAL(lv_sock);
-#line 543 "app/wifi_status.rb"
-    volatile sp_int lv_last_rx = 0;
-#line 543 "app/wifi_status.rb"
-    const char *volatile  lv_hdr = NULL;
-#line 543 "app/wifi_status.rb"
-    _gcf.p[3] = SP_GC_ENTRY_STR(lv_hdr);
-#line 543 "app/wifi_status.rb"
-    volatile sp_RbVal lv_chunk = sp_box_nil();
-#line 543 "app/wifi_status.rb"
-    _gcf.p[4] = SP_GC_ENTRY_RBVAL(lv_chunk);
-#line 543 "app/wifi_status.rb"
-    volatile sp_oint lv_hsep = sp_oint_of(0);
-#line 543 "app/wifi_status.rb"
-    const char *volatile  lv_rest = NULL;
-#line 543 "app/wifi_status.rb"
-    _gcf.p[5] = SP_GC_ENTRY_STR(lv_rest);
-#line 543 "app/wifi_status.rb"
-    const char *volatile  lv_status = NULL;
-#line 543 "app/wifi_status.rb"
-    _gcf.p[6] = SP_GC_ENTRY_STR(lv_status);
-#line 543 "app/wifi_status.rb"
-    volatile sp_int lv_code = 0;
-#line 543 "app/wifi_status.rb"
-    volatile sp_bool lv_first = 0;
-#line 543 "app/wifi_status.rb"
-    volatile sp_RbVal lv_buf = sp_box_nil();
-#line 543 "app/wifi_status.rb"
-    _gcf.p[7] = SP_GC_ENTRY_RBVAL(lv_buf);
-#line 543 "app/wifi_status.rb"
-    volatile sp_int lv_got = 0;
-#line 543 "app/wifi_status.rb"
-    volatile sp_int lv_rc = 0;
-#line 543 "app/wifi_status.rb"
-    sp_Exception *volatile  lv_e = NULL;
-#line 543 "app/wifi_status.rb"
-    _gcf.p[8] = SP_GC_ENTRY_PTR(lv_e);
 #line 544 "app/wifi_status.rb"
-  lv_total = sp_oint_nil();
-#line 545 "app/wifi_status.rb"
-  lv_written = 0LL;
-#line 546 "app/wifi_status.rb"
-  lv_begun = 0;
-#line 547 "app/wifi_status.rb"
-  lv_idle_ms = 15000LL;
-#line 548 "app/wifi_status.rb"
-  lv_sock = sp_box_nil();
-#line 549 "app/wifi_status.rb"
-  sp_StrPolyHash * _t64 = NULL; _gcf.p[9] = SP_GC_ENTRY_PTR(_t64);
-#line 549 "app/wifi_status.rb"
-  int _retf66 = 0;
-#line 549 "app/wifi_status.rb"
-  int _nxtf66 = 0; (void)_nxtf66;
-#line 549 "app/wifi_status.rb"
-  int _excf66 = 0;
-#line 549 "app/wifi_status.rb"
-  const char *_excmsg66 = NULL;
-#line 549 "app/wifi_status.rb"
-  const char *_exccls66 = NULL;
-#line 549 "app/wifi_status.rb"
-  void *_excobj66 = NULL;
-#line 549 "app/wifi_status.rb"
-  sp_StrPolyHash * _retv66 = NULL; _gcf.p[10] = SP_GC_ENTRY_PTR(_retv66);
-#line 549 "app/wifi_status.rb"
-  sp_exc_check_depth();
-#line 549 "app/wifi_status.rb"
-  sp_exc_rootmark[sp_exc_top] = sp_gc_nroots; sp_rescue_mark[sp_exc_top] = sp_rescue_sp;
-#line 549 "app/wifi_status.rb"
-  sp_exc_msg[sp_exc_top] = 0; sp_exc_obj[sp_exc_top] = 0; sp_exc_top++;
-#line 549 "app/wifi_status.rb"
-  if (setjmp(sp_exc_stack[sp_exc_top-1]) == 0) {
-#line 550 "app/wifi_status.rb"
-    lv_sock = sp_ota_connect(lv_host, lv_port, 10000LL);
-#line 557 "app/wifi_status.rb"
-    ({ sp_File *_t67 = sp_poly_as_io(lv_sock, "write"); sp_File_write_bin(_t67, ({ const char *_t68 = sp_str_or_empty(lv_path); SP_GC_ROOT(_t68); size_t _l68 = sp_str_byte_len(_t68); const char *_t69 = sp_str_or_empty(lv_host); SP_GC_ROOT(_t69); size_t _l69 = sp_str_byte_len(_t69); sp_int _t70 = lv_port; size_t _cap71 = 92UL + _l68 + _l69; char *_t71 = sp_str_alloc_raw(_cap71 + 1); char *_t72 = _t71; int _e73 = 0; memcpy(_t72, "GET ", 4); _t72 += 4; _e73 = sp_str_enc_step_i(_e73, _t71, (size_t)(_t72 - _t71), _t68, _l68, sp_str_is_binary(_t68)); memcpy(_t72, _t68, _l68); _t72 += _l68; _e73 = sp_str_enc_step_i(_e73, _t71, (size_t)(_t72 - _t71), " HTTP/1.0\r\nHost: ", 17, 0); memcpy(_t72, " HTTP/1.0\r\nHost: ", 17); _t72 += 17; _e73 = sp_str_enc_step_i(_e73, _t71, (size_t)(_t72 - _t71), _t69, _l69, sp_str_is_binary(_t69)); memcpy(_t72, _t69, _l69); _t72 += _l69; _e73 = sp_str_enc_step_i(_e73, _t71, (size_t)(_t72 - _t71), ":", 1, 0); memcpy(_t72, ":", 1); _t72 += 1; _t72 = sp_w_int(_t72, _t70); _e73 = sp_str_enc_step_i(_e73, _t71, (size_t)(_t72 - _t71), "\r\n", 2, 0); memcpy(_t72, "\r\n", 2); _t72 += 2; _e73 = sp_str_enc_step_i(_e73, _t71, (size_t)(_t72 - _t71), "User-Agent: spinel-esp32-ota/1\r\nAccept: */*\r\n\r\n", 47, 0); memcpy(_t72, "User-Agent: spinel-esp32-ota/1\r\nAccept: */*\r\n\r\n", 47); _t72 += 47; *_t72 = 0; sp_str_set_len(_t71, (size_t)(_t72 - _t71)); if (_e73 == 1) sp_str_mark_binary(_t71); (const char *)_t71; })); });
-#line 559 "app/wifi_status.rb"
-    lv_last_rx = ((sp_int)(sp_ffi_f11_esp32_millis()));
-#line 561 "app/wifi_status.rb"
-    lv_hdr = ((char *)_fzl_6.d);
-#line 562 "app/wifi_status.rb"
-    while (((!sp_str_include(lv_hdr, ((char *)_fzl_7.d))) && (sp_str_bytesize_m(lv_hdr) <= 8192LL))) {
-#line 563 "app/wifi_status.rb"
-      lv_chunk = ({ sp_File *_t75 = sp_poly_as_io(lv_sock, "read_nonblock"); sp_bool _e77; const char *_t76 = sp_sock_read_nb(_t75, 512LL, 0, 0, &_e77); _t76 ? sp_box_str(_t76) : (_e77 ? sp_box_nil() : sp_box_sym(sp_sym_intern("wait_readable"))); });
-#line 564 "app/wifi_status.rb"
-      if (sp_poly_nil_p(lv_chunk)) {
-#line 565 "app/wifi_status.rb"
-        if (sp_str_empty_p(lv_hdr)) {
-#line 565 "app/wifi_status.rb"
-          sp_raise(sp_exc_msg_given(((char *)_fzl_8.d)));
-#line 565 "app/wifi_status.rb"
-        }
-#line 566 "app/wifi_status.rb"
-        break;
-#line 566 "app/wifi_status.rb"
-      }
-#line 566 "app/wifi_status.rb"
-      else {
-#line 566 "app/wifi_status.rb"
-        if (sp_poly_eq(lv_chunk, sp_box_sym(((sp_sym)38)))) {
-#line 568 "app/wifi_status.rb"
-          if ((sp_int_sub(((sp_int)(sp_ffi_f11_esp32_millis())), lv_last_rx) > lv_idle_ms)) {
-#line 568 "app/wifi_status.rb"
-            sp_raise(sp_exc_msg_given(((char *)_fzl_9.d)));
-#line 568 "app/wifi_status.rb"
-          }
-#line 569 "app/wifi_status.rb"
-          ((sp_int)(({ int _b80_0 = ((int)(10LL)); int _b80_r; sp_native_enter(); _b80_r = sp_ffi_f10_esp32_delay_ms(_b80_0); sp_native_leave(); _b80_r; })));
-#line 570 "app/wifi_status.rb"
-          continue;
-#line 570 "app/wifi_status.rb"
-        }
-#line 570 "app/wifi_status.rb"
-      }
-#line 572 "app/wifi_status.rb"
-      lv_last_rx = ((sp_int)(sp_ffi_f11_esp32_millis()));
-#line 573 "app/wifi_status.rb"
-      lv_hdr = sp_str_concat(lv_hdr, sp_poly_to_s(lv_chunk));
-#line 573 "app/wifi_status.rb"
+      ((sp_int)(({ int _b53_0 = ((int)(50LL)); int _b53_r; sp_native_enter(); _b53_r = sp_ffi_f10_esp32_delay_ms(_b53_0); sp_native_leave(); _b53_r; })));
+#line 544 "app/wifi_status.rb"
     }
-#line 575 "app/wifi_status.rb"
-    if (sp_str_empty_p(lv_hdr)) {
-#line 575 "app/wifi_status.rb"
-      sp_raise(sp_exc_msg_given(((char *)_fzl_8.d)));
-#line 575 "app/wifi_status.rb"
-    }
-#line 581 "app/wifi_status.rb"
-    lv_hsep = sp_str_index_opt(lv_hdr, ((char *)_fzl_7.d));
-#line 582 "app/wifi_status.rb"
-    if (!((!(lv_hsep).nil))) {
-#line 582 "app/wifi_status.rb"
-      sp_raise(sp_exc_msg_given(((char *)_fzl_10.d)));
-#line 582 "app/wifi_status.rb"
-    }
-#line 583 "app/wifi_status.rb"
-    lv_rest = ({ const char *_t83 = ({ const char *_t82 = lv_hdr; SP_GC_ROOT_STR(_t82); sp_str_sub_range_r(_t82, (sp_int_add(sp_oint_val(lv_hsep, "+"), 4LL)), (sp_int)sp_str_length(_t82), 0); }); _t83 ? _t83 : sp_str_frozen_empty; });
-#line 584 "app/wifi_status.rb"
-    lv_hdr = sp_str_sub_range(lv_hdr, 0LL, sp_int_add(lv_hsep.v, 4LL));
-#line 585 "app/wifi_status.rb"
-    lv_status = ({ const char *_t84 = sp_StrArray_get(sp_str_split_drop_trailing(lv_hdr, ((char *)_fzl_11.d)), 0LL); _t84 ? _t84 : sp_str_frozen_empty; });
-#line 586 "app/wifi_status.rb"
-    if (!(sp_str_start_with(lv_status, ((char *)_fzl_12.d)))) {
-#line 586 "app/wifi_status.rb"
-      sp_raise(sp_exc_msg_given(({ const char *_t86 = sp_str_or_empty(({ const char *_t85 = lv_status; _t85 ? sp_str_inspect(_t85) : SPL("nil"); })); SP_GC_ROOT(_t86); size_t _l86 = sp_str_byte_len(_t86); size_t _cap87 = 17UL + _l86; char *_t87 = sp_str_alloc_raw(_cap87 + 1); char *_t88 = _t87; int _e89 = 0; memcpy(_t88, "bad status line: ", 17); _t88 += 17; _e89 = sp_str_enc_step_i(_e89, _t87, (size_t)(_t88 - _t87), _t86, _l86, sp_str_is_binary(_t86)); memcpy(_t88, _t86, _l86); _t88 += _l86; *_t88 = 0; sp_str_set_len(_t87, (size_t)(_t88 - _t87)); if (_e89 == 1) sp_str_mark_binary(_t87); (const char *)_t87; })));
-#line 586 "app/wifi_status.rb"
-    }
-#line 587 "app/wifi_status.rb"
-    lv_code = sp_str_to_i_cruby(sp_StrArray_get(sp_str_split_ws(lv_status), 1LL));
-#line 588 "app/wifi_status.rb"
-    if (!((lv_code == 200LL))) {
-#line 588 "app/wifi_status.rb"
-      sp_raise(sp_exc_msg_given(({ sp_int _t90 = lv_code; size_t _cap91 = 33UL; char *_t91 = sp_str_alloc_raw(_cap91 + 1); char *_t92 = _t91; memcpy(_t92, "server said ", 12); _t92 += 12; _t92 = sp_w_int(_t92, _t90); *_t92 = 0; sp_str_set_len(_t91, (size_t)(_t92 - _t91)); (const char *)_t91; })));
-#line 588 "app/wifi_status.rb"
-    }
-#line 589 "app/wifi_status.rb"
-    if (sp_poly_truthy(sp_re_match_poly(sp_re_pat_0, lv_hdr))) {
-#line 590 "app/wifi_status.rb"
-      lv_total = sp_oint_of(sp_str_to_i_cruby(sp_re_captures[1]));
-#line 591 "app/wifi_status.rb"
-      if ((lv_total.v <= 0LL)) {
-#line 591 "app/wifi_status.rb"
-        sp_raise(sp_exc_msg_given(((char *)_fzl_13.d)));
-#line 591 "app/wifi_status.rb"
-      }
-#line 591 "app/wifi_status.rb"
-    }
-#line 594 "app/wifi_status.rb"
-    lv_first = 1;
-#line 595 "app/wifi_status.rb"
-    while (1) {
-#line 596 "app/wifi_status.rb"
-      if ((lv_first && (!sp_str_empty_p(lv_rest)))) {
-#line 598 "app/wifi_status.rb"
-        lv_chunk = sp_box_str(lv_rest);
-#line 599 "app/wifi_status.rb"
-        lv_rest = ((char *)_fzl_6.d);
-#line 599 "app/wifi_status.rb"
-      }
-#line 599 "app/wifi_status.rb"
-      else {
-#line 601 "app/wifi_status.rb"
-        lv_chunk = ({ sp_File *_t93 = sp_poly_as_io(lv_sock, "read_nonblock"); sp_bool _e95; const char *_t94 = sp_sock_read_nb(_t93, 4096LL, 0, 0, &_e95); _t94 ? sp_box_str(_t94) : (_e95 ? sp_box_nil() : sp_box_sym(sp_sym_intern("wait_readable"))); });
-#line 601 "app/wifi_status.rb"
-      }
-#line 603 "app/wifi_status.rb"
-      if ((sp_poly_nil_p(lv_chunk) || sp_poly_eq(lv_chunk, sp_box_sym(((sp_sym)38))))) {
-#line 606 "app/wifi_status.rb"
-        if ((sp_int_sub(((sp_int)(sp_ffi_f11_esp32_millis())), lv_last_rx) > lv_idle_ms)) {
-#line 607 "app/wifi_status.rb"
-          sp_raise(sp_exc_msg_given(({ sp_int _t97 = lv_written; size_t _cap98 = 46UL; char *_t98 = sp_str_alloc_raw(_cap98 + 1); char *_t99 = _t98; memcpy(_t99, "idle timeout after ", 19); _t99 += 19; _t99 = sp_w_int_plain(_t99, _t97); memcpy(_t99, " bytes", 6); _t99 += 6; *_t99 = 0; sp_str_set_len(_t98, (size_t)(_t99 - _t98)); (const char *)_t98; })));
-#line 607 "app/wifi_status.rb"
-        }
-#line 609 "app/wifi_status.rb"
-        ((sp_int)(({ int _b101_0 = ((int)(10LL)); int _b101_r; sp_native_enter(); _b101_r = sp_ffi_f10_esp32_delay_ms(_b101_0); sp_native_leave(); _b101_r; })));
-#line 610 "app/wifi_status.rb"
-        continue;
-#line 610 "app/wifi_status.rb"
-      }
-#line 612 "app/wifi_status.rb"
-      lv_last_rx = ((sp_int)(sp_ffi_f11_esp32_millis()));
-#line 613 "app/wifi_status.rb"
-      lv_buf = lv_chunk;
-#line 614 "app/wifi_status.rb"
-      lv_got = sp_poly_bytesize(lv_chunk);
-#line 615 "app/wifi_status.rb"
-      if (lv_first) {
-#line 624 "app/wifi_status.rb"
-        while ((sp_poly_bytesize(lv_buf) < 80LL)) {
-#line 625 "app/wifi_status.rb"
-          lv_chunk = ({ sp_File *_t103 = sp_poly_as_io(lv_sock, "read_nonblock"); sp_bool _e105; const char *_t104 = sp_sock_read_nb(_t103, 4096LL, 0, 0, &_e105); _t104 ? sp_box_str(_t104) : (_e105 ? sp_box_nil() : sp_box_sym(sp_sym_intern("wait_readable"))); });
-#line 626 "app/wifi_status.rb"
-          if ((sp_poly_nil_p(lv_chunk) || sp_poly_eq(lv_chunk, sp_box_sym(((sp_sym)38))))) {
-#line 627 "app/wifi_status.rb"
-            if (sp_poly_nil_p(lv_chunk)) {
-#line 627 "app/wifi_status.rb"
-              sp_raise(sp_exc_msg_given(((char *)_fzl_14.d)));
-#line 627 "app/wifi_status.rb"
-            }
-#line 628 "app/wifi_status.rb"
-            if ((sp_int_sub(((sp_int)(sp_ffi_f11_esp32_millis())), lv_last_rx) > lv_idle_ms)) {
-#line 628 "app/wifi_status.rb"
-              sp_raise(sp_exc_msg_given(((char *)_fzl_15.d)));
-#line 628 "app/wifi_status.rb"
-            }
-#line 629 "app/wifi_status.rb"
-            ((sp_int)(({ int _b108_0 = ((int)(10LL)); int _b108_r; sp_native_enter(); _b108_r = sp_ffi_f10_esp32_delay_ms(_b108_0); sp_native_leave(); _b108_r; })));
-#line 630 "app/wifi_status.rb"
-            continue;
-#line 630 "app/wifi_status.rb"
-          }
-#line 632 "app/wifi_status.rb"
-          lv_last_rx = ((sp_int)(sp_ffi_f11_esp32_millis()));
-#line 633 "app/wifi_status.rb"
-          lv_buf = sp_poly_add(lv_buf, lv_chunk);
-#line 633 "app/wifi_status.rb"
-        }
-#line 635 "app/wifi_status.rb"
-        if ((!sp_poly_eq(sp_poly_getbyte(lv_buf, 0LL), sp_box_int(233LL)))) {
-#line 636 "app/wifi_status.rb"
-          sp_raise(sp_exc_msg_given(({ const char *_t112 = sp_str_or_empty(({ sp_RbVal _t110 = sp_poly_getbyte(lv_buf, 0LL); sp_int _t111 = 16LL; _t110.tag == SP_TAG_INT ? sp_int_to_s_base(_t110.v.i, _t111) : _t110.tag == SP_TAG_BIGINT ? sp_bigint_to_s_base(sp_poly_as_bigint(_t110), _t111) : (const char *)(sp_raise_cls("ArgumentError", "wrong number of arguments (given 1, expected 0)"), (void *)0); })); SP_GC_ROOT(_t112); size_t _l112 = sp_str_byte_len(_t112); size_t _cap113 = 25UL + _l112; char *_t113 = sp_str_alloc_raw(_cap113 + 1); char *_t114 = _t113; int _e115 = 0; memcpy(_t114, "not an esp image (magic ", 24); _t114 += 24; _e115 = sp_str_enc_step_i(_e115, _t113, (size_t)(_t114 - _t113), _t112, _l112, sp_str_is_binary(_t112)); memcpy(_t114, _t112, _l112); _t114 += _l112; _e115 = sp_str_enc_step_i(_e115, _t113, (size_t)(_t114 - _t113), ")", 1, 0); memcpy(_t114, ")", 1); _t114 += 1; *_t114 = 0; sp_str_set_len(_t113, (size_t)(_t114 - _t113)); if (_e115 == 1) sp_str_mark_binary(_t113); (const char *)_t113; })));
-#line 636 "app/wifi_status.rb"
-        }
-#line 642 "app/wifi_status.rb"
-        lv_rc = ((sp_int)(sp_ffi_f23_esp32_ota_check_version(sp_poly_arg_str_or_null(lv_buf), ((size_t)(sp_poly_bytesize(lv_buf))))));
-#line 643 "app/wifi_status.rb"
-        if (((lv_rc != 0LL) && (!lv_force))) {
-#line 643 "app/wifi_status.rb"
-          sp_raise(sp_exc_msg_given(({ sp_int _t117 = lv_rc; size_t _cap118 = 54UL; char *_t118 = sp_str_alloc_raw(_cap118 + 1); char *_t119 = _t118; memcpy(_t119, "version guard refused image (rc ", 32); _t119 += 32; _t119 = sp_w_int(_t119, _t117); memcpy(_t119, ")", 1); _t119 += 1; *_t119 = 0; sp_str_set_len(_t118, (size_t)(_t119 - _t118)); (const char *)_t118; })));
-#line 643 "app/wifi_status.rb"
-        }
-#line 644 "app/wifi_status.rb"
-        lv_first = 0;
-#line 645 "app/wifi_status.rb"
-        lv_got = sp_poly_bytesize(lv_buf);
-#line 645 "app/wifi_status.rb"
-      }
-#line 647 "app/wifi_status.rb"
-      if ((!lv_begun)) {
-#line 648 "app/wifi_status.rb"
-        lv_rc = ((sp_int)(sp_ffi_f22_esp32_ota_begin()));
-#line 649 "app/wifi_status.rb"
-        if ((lv_rc != 0LL)) {
-#line 649 "app/wifi_status.rb"
-          sp_raise(sp_exc_msg_given(({ sp_int _t121 = lv_rc; size_t _cap122 = 40UL; char *_t122 = sp_str_alloc_raw(_cap122 + 1); char *_t123 = _t122; memcpy(_t123, "ota_begin failed (", 18); _t123 += 18; _t123 = sp_w_int(_t123, _t121); memcpy(_t123, ")", 1); _t123 += 1; *_t123 = 0; sp_str_set_len(_t122, (size_t)(_t123 - _t122)); (const char *)_t122; })));
-#line 649 "app/wifi_status.rb"
-        }
-#line 650 "app/wifi_status.rb"
-        lv_begun = 1;
-#line 650 "app/wifi_status.rb"
-      }
-#line 652 "app/wifi_status.rb"
-      lv_rc = ((sp_int)(sp_ffi_f24_esp32_ota_write(sp_poly_arg_str_or_null(lv_buf), ((size_t)(lv_got)))));
-#line 653 "app/wifi_status.rb"
-      if ((lv_rc != 0LL)) {
-#line 653 "app/wifi_status.rb"
-        sp_raise(sp_exc_msg_given(({ sp_int _t125 = lv_rc; size_t _cap126 = 40UL; char *_t126 = sp_str_alloc_raw(_cap126 + 1); char *_t127 = _t126; memcpy(_t127, "ota_write failed (", 18); _t127 += 18; _t127 = sp_w_int(_t127, _t125); memcpy(_t127, ")", 1); _t127 += 1; *_t127 = 0; sp_str_set_len(_t126, (size_t)(_t127 - _t126)); (const char *)_t126; })));
-#line 653 "app/wifi_status.rb"
-      }
-#line 654 "app/wifi_status.rb"
-      lv_written = (sp_int_add(lv_written, lv_got));
-#line 655 "app/wifi_status.rb"
-      if (((!(lv_total).nil) && ({ sp_int _t128 = lv_written, _t128_r = lv_total.v; _t128 >= _t128_r; }))) {
-#line 655 "app/wifi_status.rb"
-        break;
-#line 655 "app/wifi_status.rb"
-      }
-#line 655 "app/wifi_status.rb"
-    }
-#line 657 "app/wifi_status.rb"
-    if (((!(lv_total).nil) && ({ sp_int _t129 = lv_written, _t129_r = lv_total.v; _t129 < _t129_r; }))) {
-#line 657 "app/wifi_status.rb"
-      sp_raise(sp_exc_msg_given(({ sp_int _t130 = lv_written; const char *_t131 = sp_int_opt_to_s(lv_total); SP_GC_ROOT(_t131); size_t _l131 = sp_str_byte_len(_t131); size_t _cap132 = 47UL + _l131; char *_t132 = sp_str_alloc_raw(_cap132 + 1); char *_t133 = _t132; int _e134 = 0; memcpy(_t133, "truncated: got ", 15); _t133 += 15; _t133 = sp_w_int_plain(_t133, _t130); _e134 = sp_str_enc_step_i(_e134, _t132, (size_t)(_t133 - _t132), ", expected ", 11, 0); memcpy(_t133, ", expected ", 11); _t133 += 11; _e134 = sp_str_enc_step_i(_e134, _t132, (size_t)(_t133 - _t132), _t131, _l131, sp_str_is_binary(_t131)); memcpy(_t133, _t131, _l131); _t133 += _l131; *_t133 = 0; sp_str_set_len(_t132, (size_t)(_t133 - _t132)); if (_e134 == 1) sp_str_mark_binary(_t132); (const char *)_t132; })));
-#line 657 "app/wifi_status.rb"
-    }
-#line 660 "app/wifi_status.rb"
-    lv_rc = ((sp_int)(sp_ffi_f25_esp32_ota_end(((int)(0LL)))));
-#line 661 "app/wifi_status.rb"
-    if ((lv_rc != 0LL)) {
-#line 661 "app/wifi_status.rb"
-      sp_raise(sp_exc_msg_given(({ sp_int _t136 = lv_rc; size_t _cap137 = 38UL; char *_t137 = sp_str_alloc_raw(_cap137 + 1); char *_t138 = _t137; memcpy(_t138, "ota_end failed (", 16); _t138 += 16; _t138 = sp_w_int(_t138, _t136); memcpy(_t138, ")", 1); _t138 += 1; *_t138 = 0; sp_str_set_len(_t137, (size_t)(_t138 - _t137)); (const char *)_t137; })));
-#line 661 "app/wifi_status.rb"
-    }
-#line 662 "app/wifi_status.rb"
-    sp_StrPolyHash *_t139 = sp_StrPolyHash_new();
-#line 662 "app/wifi_status.rb"
-    SP_GC_ROOT(_t139);
-#line 662 "app/wifi_status.rb"
-    sp_StrPolyHash_set(_t139, ((char *)_fzl_16.d), sp_box_str(({ const char *_t141 = (sp_str_dup_external(sp_ffi_f21_esp32_ota_partition_name())); SP_GC_ROOT(_t141); sp_str_delete(_t141, ((char *)_fzl_17.d)); })));
-#line 662 "app/wifi_status.rb"
-    sp_StrPolyHash_set(_t139, ((char *)_fzl_3.d), sp_box_str(((char *)_fzl_18.d)));
-#line 662 "app/wifi_status.rb"
-    sp_StrPolyHash_set(_t139, ((char *)_fzl_4.d), sp_box_int(lv_written));
-#line 662 "app/wifi_status.rb"
-    sp_StrPolyHash_set(_t139, ((char *)_fzl_19.d), sp_box_nil());
-#line 662 "app/wifi_status.rb"
-    _t64 = _t139;
-#line 662 "app/wifi_status.rb"
+#line 544 "app/wifi_status.rb"
     sp_exc_top--;
-#line 662 "app/wifi_status.rb"
+#line 544 "app/wifi_status.rb"
   }
-#line 662 "app/wifi_status.rb"
+#line 544 "app/wifi_status.rb"
   else {
-#line 662 "app/wifi_status.rb"
+#line 544 "app/wifi_status.rb"
     sp_exc_top--;
-#line 662 "app/wifi_status.rb"
+#line 544 "app/wifi_status.rb"
     sp_gc_nroots = sp_exc_rootmark[sp_exc_top]; sp_rescue_sp = sp_rescue_mark[sp_exc_top];
-#line 662 "app/wifi_status.rb"
+#line 544 "app/wifi_status.rb"
     if (sp_unwind_kind == SP_UNWIND_NONE) {
-#line 662 "app/wifi_status.rb"
-      if (strcmp((const char *)sp_last_exc_cls, "FiberKillSignal") == 0) { _excf66 = 1; _excmsg66 = sp_exc_msg[sp_exc_top]; _exccls66 = sp_exc_cls[sp_exc_top]; }
-#line 662 "app/wifi_status.rb"
-      else {
-#line 662 "app/wifi_status.rb"
-        sp_exc_check_depth(); if (SP_UNLIKELY(sp_exc_top + 1 >= SP_EXC_STACK_MAX)) sp_stack_too_deep();
-#line 662 "app/wifi_status.rb"
-        sp_exc_msg[sp_exc_top+1] = sp_exc_msg[sp_exc_top]; sp_exc_cls[sp_exc_top+1] = sp_exc_cls[sp_exc_top]; sp_exc_obj[sp_exc_top+1] = sp_exc_obj[sp_exc_top];
-#line 662 "app/wifi_status.rb"
-        sp_exc_rootmark[sp_exc_top] = sp_gc_nroots; sp_rescue_mark[sp_exc_top] = sp_rescue_sp;
-#line 662 "app/wifi_status.rb"
-        sp_exc_msg[sp_exc_top] = 0; sp_exc_obj[sp_exc_top] = 0; sp_exc_top++;
-#line 662 "app/wifi_status.rb"
-        if (setjmp(sp_exc_stack[sp_exc_top-1]) == 0) {
-#line 662 "app/wifi_status.rb"
-          const char *_rcls_142 = (const char *)sp_last_exc_cls; (void)_rcls_142;
-#line 662 "app/wifi_status.rb"
-          const char *_rmsg_142 = sp_exc_msg[sp_exc_top]; (void)_rmsg_142;
-#line 662 "app/wifi_status.rb"
-          if (sp_exc_is_standard_error(_rcls_142)) {
-#line 662 "app/wifi_status.rb"
-            sp_Exception *_ce_142 = sp_exc_obj[sp_exc_top] ? (sp_Exception *)sp_exc_obj[sp_exc_top] : sp_exc_new_for_catch(_rcls_142, _rmsg_142);
-#line 662 "app/wifi_status.rb"
-            sp_rescue_push((void *)_ce_142);
-#line 662 "app/wifi_status.rb"
-            if (_ce_142->backtrace == NULL) { sp_StrArray *_bt = sp_backtrace_captured(); sp_gc_wb((void *)_ce_142); _ce_142->backtrace = _bt; }
-#line 662 "app/wifi_status.rb"
-            if (!_ce_142->cause) { sp_gc_wb((void *)_ce_142); _ce_142->cause = (sp_Exception *)sp_pending_cause; } sp_pending_cause = NULL;
-#line 662 "app/wifi_status.rb"
-            lv_e = _ce_142;
-#line 665 "app/wifi_status.rb"
-            if (lv_begun) {
-#line 666 "app/wifi_status.rb"
-              sp_exc_check_depth();
-#line 666 "app/wifi_status.rb"
-              sp_exc_rootmark[sp_exc_top] = sp_gc_nroots; sp_rescue_mark[sp_exc_top] = sp_rescue_sp;
-#line 666 "app/wifi_status.rb"
-              sp_exc_msg[sp_exc_top] = 0; sp_exc_obj[sp_exc_top] = 0; sp_exc_top++;
-#line 666 "app/wifi_status.rb"
-              if (setjmp(sp_exc_stack[sp_exc_top-1]) == 0) {
-#line 667 "app/wifi_status.rb"
-                ((sp_int)(sp_ffi_f25_esp32_ota_end(((int)(1LL)))));
-#line 667 "app/wifi_status.rb"
-                sp_exc_top--;
-#line 667 "app/wifi_status.rb"
-              }
-#line 667 "app/wifi_status.rb"
-              else {
-#line 667 "app/wifi_status.rb"
-                sp_exc_top--;
-#line 667 "app/wifi_status.rb"
-                sp_gc_nroots = sp_exc_rootmark[sp_exc_top]; sp_rescue_sp = sp_rescue_mark[sp_exc_top];
-#line 667 "app/wifi_status.rb"
-                if (sp_unwind_kind == SP_UNWIND_NONE) {
-#line 667 "app/wifi_status.rb"
-                  if (strcmp((const char *)sp_last_exc_cls, "FiberKillSignal") == 0) sp_raise_cls("FiberKillSignal", sp_exc_msg[sp_exc_top]);
-#line 667 "app/wifi_status.rb"
-                  else {
-#line 667 "app/wifi_status.rb"
-                    const char *_rcls_145 = (const char *)sp_last_exc_cls; (void)_rcls_145;
-#line 667 "app/wifi_status.rb"
-                    const char *_rmsg_145 = sp_exc_msg[sp_exc_top]; (void)_rmsg_145;
-#line 667 "app/wifi_status.rb"
-                    if (sp_exc_cls_matches(_rcls_145, "StandardError")) {
-#line 667 "app/wifi_status.rb"
-                      sp_Exception *_ce_145 = sp_exc_obj[sp_exc_top] ? (sp_Exception *)sp_exc_obj[sp_exc_top] : sp_exc_new_for_catch(_rcls_145, _rmsg_145);
-#line 667 "app/wifi_status.rb"
-                      sp_rescue_push((void *)_ce_145);
-#line 667 "app/wifi_status.rb"
-                      if (_ce_145->backtrace == NULL) { sp_StrArray *_bt = sp_backtrace_captured(); sp_gc_wb((void *)_ce_145); _ce_145->backtrace = _bt; }
-#line 667 "app/wifi_status.rb"
-                      if (!_ce_145->cause) { sp_gc_wb((void *)_ce_145); _ce_145->cause = (sp_Exception *)sp_pending_cause; } sp_pending_cause = NULL;
-#line 669 "app/wifi_status.rb"
-                      0;
-#line 669 "app/wifi_status.rb"
-                      sp_rescue_sp--;
-#line 669 "app/wifi_status.rb"
-                    }
-#line 669 "app/wifi_status.rb"
-                    else {
-#line 669 "app/wifi_status.rb"
-                      sp_pending_exc_obj = sp_exc_obj[sp_exc_top]; sp_bt_keep = 1;
-#line 669 "app/wifi_status.rb"
-                      sp_raise_cls(_rcls_145, _rmsg_145);
-#line 669 "app/wifi_status.rb"
-                    }
-#line 669 "app/wifi_status.rb"
-                  }
-#line 669 "app/wifi_status.rb"
-                }
-#line 669 "app/wifi_status.rb"
-                if (sp_unwind_kind != SP_UNWIND_NONE) sp_unwind_resume();
-#line 669 "app/wifi_status.rb"
-              }
-#line 669 "app/wifi_status.rb"
-            }
-#line 672 "app/wifi_status.rb"
-            sp_StrPolyHash *_t146 = sp_StrPolyHash_new();
-#line 672 "app/wifi_status.rb"
-            SP_GC_ROOT(_t146);
-#line 672 "app/wifi_status.rb"
-            sp_StrPolyHash_set(_t146, ((char *)_fzl_16.d), sp_box_str((lv_begun ? ({ const char *_t148 = (sp_str_dup_external(sp_ffi_f21_esp32_ota_partition_name())); SP_GC_ROOT(_t148); sp_str_delete(_t148, ((char *)_fzl_17.d)); }) : (0, NULL))));
-#line 672 "app/wifi_status.rb"
-            sp_StrPolyHash_set(_t146, ((char *)_fzl_3.d), sp_box_str(((char *)_fzl_20.d)));
-#line 672 "app/wifi_status.rb"
-            sp_StrPolyHash_set(_t146, ((char *)_fzl_4.d), sp_box_int(lv_written));
-#line 672 "app/wifi_status.rb"
-            sp_Exception *_t149 = lv_e;
-#line 672 "app/wifi_status.rb"
-            sp_Exception *_t151 = lv_e;
-#line 672 "app/wifi_status.rb"
-            sp_StrPolyHash_set(_t146, ((char *)_fzl_19.d), sp_box_str(({ const char *_t150 = sp_class_to_s(((sp_Class){0, _t149 ? sp_exc_class_name(_t149) : SPL("NilClass")})); SP_GC_ROOT(_t150); size_t _l150 = sp_str_byte_len(_t150); const char *_t152 = sp_str_or_empty((_t151 ? sp_exc_message(_t151) : sp_str_empty)); SP_GC_ROOT(_t152); size_t _l152 = sp_str_byte_len(_t152); size_t _cap153 = 2UL + _l150 + _l152; char *_t153 = sp_str_alloc_raw(_cap153 + 1); char *_t154 = _t153; int _e155 = -1; _e155 = sp_str_enc_step_i(_e155, _t153, (size_t)(_t154 - _t153), _t150, _l150, sp_str_is_binary(_t150)); memcpy(_t154, _t150, _l150); _t154 += _l150; _e155 = sp_str_enc_step_i(_e155, _t153, (size_t)(_t154 - _t153), ": ", 2, 0); memcpy(_t154, ": ", 2); _t154 += 2; _e155 = sp_str_enc_step_i(_e155, _t153, (size_t)(_t154 - _t153), _t152, _l152, sp_str_is_binary(_t152)); memcpy(_t154, _t152, _l152); _t154 += _l152; *_t154 = 0; sp_str_set_len(_t153, (size_t)(_t154 - _t153)); if (_e155 == 1) sp_str_mark_binary(_t153); (const char *)_t153; })));
-#line 672 "app/wifi_status.rb"
-            _t64 = _t146;
-#line 672 "app/wifi_status.rb"
-            sp_rescue_sp--;
-#line 672 "app/wifi_status.rb"
-          }
-#line 672 "app/wifi_status.rb"
-          else {
-#line 672 "app/wifi_status.rb"
-            sp_pending_exc_obj = sp_exc_obj[sp_exc_top]; sp_bt_keep = 1;
-#line 672 "app/wifi_status.rb"
-            sp_raise_cls(_rcls_142, _rmsg_142);
-#line 672 "app/wifi_status.rb"
-          }
-#line 672 "app/wifi_status.rb"
-          sp_exc_top--;
-#line 672 "app/wifi_status.rb"
-        }
-#line 672 "app/wifi_status.rb"
-        else {
-#line 672 "app/wifi_status.rb"
-          sp_exc_top--;
-#line 672 "app/wifi_status.rb"
-          sp_gc_nroots = sp_exc_rootmark[sp_exc_top]; sp_rescue_sp = sp_rescue_mark[sp_exc_top];
-#line 672 "app/wifi_status.rb"
-          if (sp_unwind_kind == SP_UNWIND_NONE) { sp_Exception *_xo66 = sp_exc_obj[sp_exc_top] ? (sp_Exception *)sp_exc_obj[sp_exc_top] : sp_exc_new_for_catch(sp_exc_cls[sp_exc_top], sp_exc_msg[sp_exc_top]); if (!_xo66->cause) { sp_gc_wb((void *)_xo66); _xo66->cause = (sp_Exception *)sp_pending_cause; } sp_pending_cause = NULL; _excf66 = 1; _excmsg66 = sp_exc_msg[sp_exc_top]; _exccls66 = sp_exc_cls[sp_exc_top]; _excobj66 = _xo66; }
-#line 672 "app/wifi_status.rb"
-        }
-#line 672 "app/wifi_status.rb"
-      }
-#line 672 "app/wifi_status.rb"
-    }
-#line 672 "app/wifi_status.rb"
-  }
-#line 672 "app/wifi_status.rb"
-_ensure66: ;
-#line 672 "app/wifi_status.rb"
-  int _uk66 = sp_unwind_kind, _ut66 = sp_unwind_target, _ue66 = sp_unwind_exc_top; sp_proc_home *_uh66 = sp_unwind_home;
-#line 672 "app/wifi_status.rb"
-  void *_ic66 = sp_inflight_cause; if (_excf66) sp_inflight_cause = sp_exc_ensure_obj(&_excobj66, &_excmsg66, _exccls66);
-#line 672 "app/wifi_status.rb"
-  { void *_icr66 SP_CLEANUP(sp_inflight_restore) = _ic66; (void)_icr66;
-#line 672 "app/wifi_status.rb"
-  int _rsp66 SP_CLEANUP(sp_rescue_sp_restore) = sp_rescue_sp; if (_excf66) sp_rescue_push(sp_inflight_cause);
-#line 675 "app/wifi_status.rb"
-  sp_exc_check_depth();
-#line 675 "app/wifi_status.rb"
-  sp_exc_rootmark[sp_exc_top] = sp_gc_nroots; sp_rescue_mark[sp_exc_top] = sp_rescue_sp;
-#line 675 "app/wifi_status.rb"
-  sp_exc_msg[sp_exc_top] = 0; sp_exc_obj[sp_exc_top] = 0; sp_exc_top++;
-#line 675 "app/wifi_status.rb"
-  if (setjmp(sp_exc_stack[sp_exc_top-1]) == 0) {
-#line 676 "app/wifi_status.rb"
-    if (sp_poly_truthy(lv_sock)) {
-#line 676 "app/wifi_status.rb"
-      ({ sp_RbVal _t158 = lv_sock; SP_GC_ROOT_RBVAL(_t158); _t158.tag == SP_TAG_OBJ && _t158.cls_id == SP_BUILTIN_QUEUE ? ((void)sp_Queue_close((sp_queue *)_t158.v.p), _t158) : _t158.tag == SP_TAG_OBJ && _t158.cls_id == SP_BUILTIN_DIR ? ((void)sp_Dir_close((sp_Dir *)_t158.v.p), sp_box_nil()) : ({ sp_File *_t157 = sp_poly_as_io(_t158, "close"); (void)sp_File_close(_t157); sp_box_nil(); }); });
-#line 676 "app/wifi_status.rb"
-    }
-#line 676 "app/wifi_status.rb"
-    sp_exc_top--;
-#line 676 "app/wifi_status.rb"
-  }
-#line 676 "app/wifi_status.rb"
-  else {
-#line 676 "app/wifi_status.rb"
-    sp_exc_top--;
-#line 676 "app/wifi_status.rb"
-    sp_gc_nroots = sp_exc_rootmark[sp_exc_top]; sp_rescue_sp = sp_rescue_mark[sp_exc_top];
-#line 676 "app/wifi_status.rb"
-    if (sp_unwind_kind == SP_UNWIND_NONE) {
-#line 676 "app/wifi_status.rb"
+#line 544 "app/wifi_status.rb"
       if (strcmp((const char *)sp_last_exc_cls, "FiberKillSignal") == 0) sp_raise_cls("FiberKillSignal", sp_exc_msg[sp_exc_top]);
-#line 676 "app/wifi_status.rb"
+#line 544 "app/wifi_status.rb"
       else {
-#line 676 "app/wifi_status.rb"
-        const char *_rcls_159 = (const char *)sp_last_exc_cls; (void)_rcls_159;
-#line 676 "app/wifi_status.rb"
-        const char *_rmsg_159 = sp_exc_msg[sp_exc_top]; (void)_rmsg_159;
-#line 676 "app/wifi_status.rb"
-        if (sp_exc_cls_matches(_rcls_159, "StandardError")) {
-#line 676 "app/wifi_status.rb"
-          sp_Exception *_ce_159 = sp_exc_obj[sp_exc_top] ? (sp_Exception *)sp_exc_obj[sp_exc_top] : sp_exc_new_for_catch(_rcls_159, _rmsg_159);
-#line 676 "app/wifi_status.rb"
-          sp_rescue_push((void *)_ce_159);
-#line 676 "app/wifi_status.rb"
-          if (_ce_159->backtrace == NULL) { sp_StrArray *_bt = sp_backtrace_captured(); sp_gc_wb((void *)_ce_159); _ce_159->backtrace = _bt; }
-#line 676 "app/wifi_status.rb"
-          if (!_ce_159->cause) { sp_gc_wb((void *)_ce_159); _ce_159->cause = (sp_Exception *)sp_pending_cause; } sp_pending_cause = NULL;
-#line 678 "app/wifi_status.rb"
-          0;
-#line 678 "app/wifi_status.rb"
+#line 544 "app/wifi_status.rb"
+        const char *_rcls_54 = (const char *)sp_last_exc_cls; (void)_rcls_54;
+#line 544 "app/wifi_status.rb"
+        const char *_rmsg_54 = sp_exc_msg[sp_exc_top]; (void)_rmsg_54;
+#line 544 "app/wifi_status.rb"
+        if (sp_exc_is_standard_error(_rcls_54)) {
+#line 544 "app/wifi_status.rb"
+          sp_Exception *_ce_54 = sp_exc_obj[sp_exc_top] ? (sp_Exception *)sp_exc_obj[sp_exc_top] : sp_exc_new_for_catch(_rcls_54, _rmsg_54);
+#line 544 "app/wifi_status.rb"
+          sp_rescue_push((void *)_ce_54);
+#line 544 "app/wifi_status.rb"
+          if (_ce_54->backtrace == NULL) { sp_StrArray *_bt = sp_backtrace_captured(); sp_gc_wb((void *)_ce_54); _ce_54->backtrace = _bt; }
+#line 544 "app/wifi_status.rb"
+          if (!_ce_54->cause) { sp_gc_wb((void *)_ce_54); _ce_54->cause = (sp_Exception *)sp_pending_cause; } sp_pending_cause = NULL;
+#line 544 "app/wifi_status.rb"
+          lv_e = _ce_54;
+#line 553 "app/wifi_status.rb"
+          sp_Exception *_t55 = lv_e;
+#line 553 "app/wifi_status.rb"
+          sp_Exception *_t57 = lv_e;
+#line 553 "app/wifi_status.rb"
+          { const char *_ps = (const char *)(({ const char *_t56 = sp_class_to_s(((sp_Class){0, _t55 ? sp_exc_class_name(_t55) : SPL("NilClass")})); SP_GC_ROOT(_t56); size_t _l56 = sp_str_byte_len(_t56); const char *_t58 = sp_str_or_empty((_t57 ? sp_exc_message(_t57) : sp_str_empty)); SP_GC_ROOT(_t58); size_t _l58 = sp_str_byte_len(_t58); size_t _cap59 = 40UL + _l56 + _l58; char *_t59 = sp_str_alloc_raw(_cap59 + 1); char *_t60 = _t59; int _e61 = 0; memcpy(_t60, "ota: ota_connect failed: ", 25); _t60 += 25; _e61 = sp_str_enc_step_i(_e61, _t59, (size_t)(_t60 - _t59), _t56, _l56, sp_str_is_binary(_t56)); memcpy(_t60, _t56, _l56); _t60 += _l56; _e61 = sp_str_enc_step_i(_e61, _t59, (size_t)(_t60 - _t59), ": ", 2, 0); memcpy(_t60, ": ", 2); _t60 += 2; _e61 = sp_str_enc_step_i(_e61, _t59, (size_t)(_t60 - _t59), _t58, _l58, sp_str_is_binary(_t58)); memcpy(_t60, _t58, _l58); _t60 += _l58; _e61 = sp_str_enc_step_i(_e61, _t59, (size_t)(_t60 - _t59), " (closing fd)", 13, 0); memcpy(_t60, " (closing fd)", 13); _t60 += 13; *_t60 = 0; sp_str_set_len(_t59, (size_t)(_t60 - _t59)); if (_e61 == 1) sp_str_mark_binary(_t59); (const char *)_t59; })); sp_puts_str_line(_ps); }
+#line 554 "app/wifi_status.rb"
+          sp_exc_check_depth();
+#line 554 "app/wifi_status.rb"
+          sp_exc_rootmark[sp_exc_top] = sp_gc_nroots; sp_rescue_mark[sp_exc_top] = sp_rescue_sp;
+#line 554 "app/wifi_status.rb"
+          sp_exc_msg[sp_exc_top] = 0; sp_exc_obj[sp_exc_top] = 0; sp_exc_top++;
+#line 554 "app/wifi_status.rb"
+          if (setjmp(sp_exc_stack[sp_exc_top-1]) == 0) {
+#line 555 "app/wifi_status.rb"
+            if (((lv_sock) != 0)) {
+#line 555 "app/wifi_status.rb"
+              ({ sp_File_close(lv_sock); sp_box_nil(); });
+#line 555 "app/wifi_status.rb"
+            }
+#line 555 "app/wifi_status.rb"
+            sp_exc_top--;
+#line 555 "app/wifi_status.rb"
+          }
+#line 555 "app/wifi_status.rb"
+          else {
+#line 555 "app/wifi_status.rb"
+            sp_exc_top--;
+#line 555 "app/wifi_status.rb"
+            sp_gc_nroots = sp_exc_rootmark[sp_exc_top]; sp_rescue_sp = sp_rescue_mark[sp_exc_top];
+#line 555 "app/wifi_status.rb"
+            if (sp_unwind_kind == SP_UNWIND_NONE) {
+#line 555 "app/wifi_status.rb"
+              if (strcmp((const char *)sp_last_exc_cls, "FiberKillSignal") == 0) sp_raise_cls("FiberKillSignal", sp_exc_msg[sp_exc_top]);
+#line 555 "app/wifi_status.rb"
+              else {
+#line 555 "app/wifi_status.rb"
+                const char *_rcls_63 = (const char *)sp_last_exc_cls; (void)_rcls_63;
+#line 555 "app/wifi_status.rb"
+                const char *_rmsg_63 = sp_exc_msg[sp_exc_top]; (void)_rmsg_63;
+#line 555 "app/wifi_status.rb"
+                if (sp_exc_cls_matches(_rcls_63, "StandardError")) {
+#line 555 "app/wifi_status.rb"
+                  sp_Exception *_ce_63 = sp_exc_obj[sp_exc_top] ? (sp_Exception *)sp_exc_obj[sp_exc_top] : sp_exc_new_for_catch(_rcls_63, _rmsg_63);
+#line 555 "app/wifi_status.rb"
+                  sp_rescue_push((void *)_ce_63);
+#line 555 "app/wifi_status.rb"
+                  if (_ce_63->backtrace == NULL) { sp_StrArray *_bt = sp_backtrace_captured(); sp_gc_wb((void *)_ce_63); _ce_63->backtrace = _bt; }
+#line 555 "app/wifi_status.rb"
+                  if (!_ce_63->cause) { sp_gc_wb((void *)_ce_63); _ce_63->cause = (sp_Exception *)sp_pending_cause; } sp_pending_cause = NULL;
+#line 557 "app/wifi_status.rb"
+                  0;
+#line 557 "app/wifi_status.rb"
+                  sp_rescue_sp--;
+#line 557 "app/wifi_status.rb"
+                }
+#line 557 "app/wifi_status.rb"
+                else {
+#line 557 "app/wifi_status.rb"
+                  sp_pending_exc_obj = sp_exc_obj[sp_exc_top]; sp_bt_keep = 1;
+#line 557 "app/wifi_status.rb"
+                  sp_raise_cls(_rcls_63, _rmsg_63);
+#line 557 "app/wifi_status.rb"
+                }
+#line 557 "app/wifi_status.rb"
+              }
+#line 557 "app/wifi_status.rb"
+            }
+#line 557 "app/wifi_status.rb"
+            if (sp_unwind_kind != SP_UNWIND_NONE) sp_unwind_resume();
+#line 557 "app/wifi_status.rb"
+          }
+#line 559 "app/wifi_status.rb"
+          (sp_reraise_current = 1, sp_raise_cls(_rcls_54, _rmsg_54));
+#line 559 "app/wifi_status.rb"
           sp_rescue_sp--;
-#line 678 "app/wifi_status.rb"
+#line 559 "app/wifi_status.rb"
         }
-#line 678 "app/wifi_status.rb"
+#line 559 "app/wifi_status.rb"
         else {
-#line 678 "app/wifi_status.rb"
+#line 559 "app/wifi_status.rb"
           sp_pending_exc_obj = sp_exc_obj[sp_exc_top]; sp_bt_keep = 1;
-#line 678 "app/wifi_status.rb"
-          sp_raise_cls(_rcls_159, _rmsg_159);
-#line 678 "app/wifi_status.rb"
+#line 559 "app/wifi_status.rb"
+          sp_raise_cls(_rcls_54, _rmsg_54);
+#line 559 "app/wifi_status.rb"
         }
-#line 678 "app/wifi_status.rb"
+#line 559 "app/wifi_status.rb"
       }
-#line 678 "app/wifi_status.rb"
+#line 559 "app/wifi_status.rb"
     }
-#line 678 "app/wifi_status.rb"
+#line 559 "app/wifi_status.rb"
     if (sp_unwind_kind != SP_UNWIND_NONE) sp_unwind_resume();
-#line 678 "app/wifi_status.rb"
+#line 559 "app/wifi_status.rb"
   }
-#line 678 "app/wifi_status.rb"
+#line 559 "app/wifi_status.rb"
+  return _t41;
+#line 559 "app/wifi_status.rb"
+  return sp_box_nil();
+#line 559 "app/wifi_status.rb"
+}
+#line 563 "app/wifi_status.rb"
+static sp_StrPolyHash * sp_ota_download(const char * lv_host, sp_int lv_port, const char * lv_path, sp_bool lv_force) {
+#line 563 "app/wifi_status.rb"
+    SP_GC_SAVE();
+#line 563 "app/wifi_status.rb"
+    struct { sp_gc_frame_hdr h; void **p[11]; } _gcf = {{0, 11}}; SP_GC_ROOT_FRAME(_gcf);
+#line 563 "app/wifi_status.rb"
+    sp_re_frame _sp_rf SP_CLEANUP(sp_re_frame_pop); sp_re_frame_push(&_sp_rf);
+#line 563 "app/wifi_status.rb"
+    _gcf.p[0] = SP_GC_ENTRY_STR(lv_host);
+#line 563 "app/wifi_status.rb"
+    _gcf.p[1] = SP_GC_ENTRY_STR(lv_path);
+#line 563 "app/wifi_status.rb"
+    volatile sp_oint lv_total = sp_oint_of(0);
+#line 563 "app/wifi_status.rb"
+    volatile sp_int lv_written = 0;
+#line 563 "app/wifi_status.rb"
+    volatile sp_bool lv_begun = 0;
+#line 563 "app/wifi_status.rb"
+    sp_int lv_idle_ms = 0;
+#line 563 "app/wifi_status.rb"
+    volatile sp_RbVal lv_sock = sp_box_nil();
+#line 563 "app/wifi_status.rb"
+    _gcf.p[2] = SP_GC_ENTRY_RBVAL(lv_sock);
+#line 563 "app/wifi_status.rb"
+    volatile sp_int lv_last_rx = 0;
+#line 563 "app/wifi_status.rb"
+    const char *volatile  lv_hdr = NULL;
+#line 563 "app/wifi_status.rb"
+    _gcf.p[3] = SP_GC_ENTRY_STR(lv_hdr);
+#line 563 "app/wifi_status.rb"
+    volatile sp_RbVal lv_chunk = sp_box_nil();
+#line 563 "app/wifi_status.rb"
+    _gcf.p[4] = SP_GC_ENTRY_RBVAL(lv_chunk);
+#line 563 "app/wifi_status.rb"
+    volatile sp_oint lv_hsep = sp_oint_of(0);
+#line 563 "app/wifi_status.rb"
+    const char *volatile  lv_rest = NULL;
+#line 563 "app/wifi_status.rb"
+    _gcf.p[5] = SP_GC_ENTRY_STR(lv_rest);
+#line 563 "app/wifi_status.rb"
+    const char *volatile  lv_status = NULL;
+#line 563 "app/wifi_status.rb"
+    _gcf.p[6] = SP_GC_ENTRY_STR(lv_status);
+#line 563 "app/wifi_status.rb"
+    volatile sp_int lv_code = 0;
+#line 563 "app/wifi_status.rb"
+    volatile sp_bool lv_first = 0;
+#line 563 "app/wifi_status.rb"
+    volatile sp_RbVal lv_buf = sp_box_nil();
+#line 563 "app/wifi_status.rb"
+    _gcf.p[7] = SP_GC_ENTRY_RBVAL(lv_buf);
+#line 563 "app/wifi_status.rb"
+    volatile sp_int lv_got = 0;
+#line 563 "app/wifi_status.rb"
+    volatile sp_int lv_rc = 0;
+#line 563 "app/wifi_status.rb"
+    sp_Exception *volatile  lv_e = NULL;
+#line 563 "app/wifi_status.rb"
+    _gcf.p[8] = SP_GC_ENTRY_PTR(lv_e);
+#line 564 "app/wifi_status.rb"
+  lv_total = sp_oint_nil();
+#line 565 "app/wifi_status.rb"
+  lv_written = 0LL;
+#line 566 "app/wifi_status.rb"
+  lv_begun = 0;
+#line 567 "app/wifi_status.rb"
+  lv_idle_ms = 15000LL;
+#line 568 "app/wifi_status.rb"
+  lv_sock = sp_box_nil();
+#line 569 "app/wifi_status.rb"
+  sp_StrPolyHash * _t64 = NULL; _gcf.p[9] = SP_GC_ENTRY_PTR(_t64);
+#line 569 "app/wifi_status.rb"
+  int _retf66 = 0;
+#line 569 "app/wifi_status.rb"
+  int _nxtf66 = 0; (void)_nxtf66;
+#line 569 "app/wifi_status.rb"
+  int _excf66 = 0;
+#line 569 "app/wifi_status.rb"
+  const char *_excmsg66 = NULL;
+#line 569 "app/wifi_status.rb"
+  const char *_exccls66 = NULL;
+#line 569 "app/wifi_status.rb"
+  void *_excobj66 = NULL;
+#line 569 "app/wifi_status.rb"
+  sp_StrPolyHash * _retv66 = NULL; _gcf.p[10] = SP_GC_ENTRY_PTR(_retv66);
+#line 569 "app/wifi_status.rb"
+  sp_exc_check_depth();
+#line 569 "app/wifi_status.rb"
+  sp_exc_rootmark[sp_exc_top] = sp_gc_nroots; sp_rescue_mark[sp_exc_top] = sp_rescue_sp;
+#line 569 "app/wifi_status.rb"
+  sp_exc_msg[sp_exc_top] = 0; sp_exc_obj[sp_exc_top] = 0; sp_exc_top++;
+#line 569 "app/wifi_status.rb"
+  if (setjmp(sp_exc_stack[sp_exc_top-1]) == 0) {
+#line 570 "app/wifi_status.rb"
+    lv_sock = sp_ota_connect(lv_host, lv_port, 10000LL);
+#line 577 "app/wifi_status.rb"
+    ({ sp_File *_t67 = sp_poly_as_io(lv_sock, "write"); sp_File_write_bin(_t67, ({ const char *_t68 = sp_str_or_empty(lv_path); SP_GC_ROOT(_t68); size_t _l68 = sp_str_byte_len(_t68); const char *_t69 = sp_str_or_empty(lv_host); SP_GC_ROOT(_t69); size_t _l69 = sp_str_byte_len(_t69); sp_int _t70 = lv_port; size_t _cap71 = 92UL + _l68 + _l69; char *_t71 = sp_str_alloc_raw(_cap71 + 1); char *_t72 = _t71; int _e73 = 0; memcpy(_t72, "GET ", 4); _t72 += 4; _e73 = sp_str_enc_step_i(_e73, _t71, (size_t)(_t72 - _t71), _t68, _l68, sp_str_is_binary(_t68)); memcpy(_t72, _t68, _l68); _t72 += _l68; _e73 = sp_str_enc_step_i(_e73, _t71, (size_t)(_t72 - _t71), " HTTP/1.0\r\nHost: ", 17, 0); memcpy(_t72, " HTTP/1.0\r\nHost: ", 17); _t72 += 17; _e73 = sp_str_enc_step_i(_e73, _t71, (size_t)(_t72 - _t71), _t69, _l69, sp_str_is_binary(_t69)); memcpy(_t72, _t69, _l69); _t72 += _l69; _e73 = sp_str_enc_step_i(_e73, _t71, (size_t)(_t72 - _t71), ":", 1, 0); memcpy(_t72, ":", 1); _t72 += 1; _t72 = sp_w_int(_t72, _t70); _e73 = sp_str_enc_step_i(_e73, _t71, (size_t)(_t72 - _t71), "\r\n", 2, 0); memcpy(_t72, "\r\n", 2); _t72 += 2; _e73 = sp_str_enc_step_i(_e73, _t71, (size_t)(_t72 - _t71), "User-Agent: spinel-esp32-ota/1\r\nAccept: */*\r\n\r\n", 47, 0); memcpy(_t72, "User-Agent: spinel-esp32-ota/1\r\nAccept: */*\r\n\r\n", 47); _t72 += 47; *_t72 = 0; sp_str_set_len(_t71, (size_t)(_t72 - _t71)); if (_e73 == 1) sp_str_mark_binary(_t71); (const char *)_t71; })); });
+#line 579 "app/wifi_status.rb"
+    lv_last_rx = ((sp_int)(sp_ffi_f11_esp32_millis()));
+#line 581 "app/wifi_status.rb"
+    lv_hdr = ((char *)_fzl_6.d);
+#line 582 "app/wifi_status.rb"
+    while (((!sp_str_include(lv_hdr, ((char *)_fzl_7.d))) && (sp_str_bytesize_m(lv_hdr) <= 8192LL))) {
+#line 583 "app/wifi_status.rb"
+      lv_chunk = ({ sp_File *_t75 = sp_poly_as_io(lv_sock, "read_nonblock"); sp_bool _e77; const char *_t76 = sp_sock_read_nb(_t75, 512LL, 0, 0, &_e77); _t76 ? sp_box_str(_t76) : (_e77 ? sp_box_nil() : sp_box_sym(sp_sym_intern("wait_readable"))); });
+#line 584 "app/wifi_status.rb"
+      if (sp_poly_nil_p(lv_chunk)) {
+#line 585 "app/wifi_status.rb"
+        if (sp_str_empty_p(lv_hdr)) {
+#line 585 "app/wifi_status.rb"
+          sp_raise(sp_exc_msg_given(((char *)_fzl_8.d)));
+#line 585 "app/wifi_status.rb"
+        }
+#line 586 "app/wifi_status.rb"
+        break;
+#line 586 "app/wifi_status.rb"
+      }
+#line 586 "app/wifi_status.rb"
+      else {
+#line 586 "app/wifi_status.rb"
+        if (sp_poly_eq(lv_chunk, sp_box_sym(((sp_sym)38)))) {
+#line 588 "app/wifi_status.rb"
+          if ((sp_int_sub(((sp_int)(sp_ffi_f11_esp32_millis())), lv_last_rx) > lv_idle_ms)) {
+#line 588 "app/wifi_status.rb"
+            sp_raise(sp_exc_msg_given(((char *)_fzl_9.d)));
+#line 588 "app/wifi_status.rb"
+          }
+#line 589 "app/wifi_status.rb"
+          ((sp_int)(({ int _b80_0 = ((int)(10LL)); int _b80_r; sp_native_enter(); _b80_r = sp_ffi_f10_esp32_delay_ms(_b80_0); sp_native_leave(); _b80_r; })));
+#line 590 "app/wifi_status.rb"
+          continue;
+#line 590 "app/wifi_status.rb"
+        }
+#line 590 "app/wifi_status.rb"
+      }
+#line 592 "app/wifi_status.rb"
+      lv_last_rx = ((sp_int)(sp_ffi_f11_esp32_millis()));
+#line 593 "app/wifi_status.rb"
+      lv_hdr = sp_str_concat(lv_hdr, sp_poly_to_s(lv_chunk));
+#line 593 "app/wifi_status.rb"
+    }
+#line 595 "app/wifi_status.rb"
+    if (sp_str_empty_p(lv_hdr)) {
+#line 595 "app/wifi_status.rb"
+      sp_raise(sp_exc_msg_given(((char *)_fzl_8.d)));
+#line 595 "app/wifi_status.rb"
+    }
+#line 601 "app/wifi_status.rb"
+    lv_hsep = sp_str_index_opt(lv_hdr, ((char *)_fzl_7.d));
+#line 602 "app/wifi_status.rb"
+    if (!((!(lv_hsep).nil))) {
+#line 602 "app/wifi_status.rb"
+      sp_raise(sp_exc_msg_given(((char *)_fzl_10.d)));
+#line 602 "app/wifi_status.rb"
+    }
+#line 603 "app/wifi_status.rb"
+    lv_rest = ({ const char *_t83 = ({ const char *_t82 = lv_hdr; SP_GC_ROOT_STR(_t82); sp_str_sub_range_r(_t82, (sp_int_add(sp_oint_val(lv_hsep, "+"), 4LL)), (sp_int)sp_str_length(_t82), 0); }); _t83 ? _t83 : sp_str_frozen_empty; });
+#line 604 "app/wifi_status.rb"
+    lv_hdr = sp_str_sub_range(lv_hdr, 0LL, sp_int_add(lv_hsep.v, 4LL));
+#line 605 "app/wifi_status.rb"
+    lv_status = ({ const char *_t84 = sp_StrArray_get(sp_str_split_drop_trailing(lv_hdr, ((char *)_fzl_11.d)), 0LL); _t84 ? _t84 : sp_str_frozen_empty; });
+#line 606 "app/wifi_status.rb"
+    if (!(sp_str_start_with(lv_status, ((char *)_fzl_12.d)))) {
+#line 606 "app/wifi_status.rb"
+      sp_raise(sp_exc_msg_given(({ const char *_t86 = sp_str_or_empty(({ const char *_t85 = lv_status; _t85 ? sp_str_inspect(_t85) : SPL("nil"); })); SP_GC_ROOT(_t86); size_t _l86 = sp_str_byte_len(_t86); size_t _cap87 = 17UL + _l86; char *_t87 = sp_str_alloc_raw(_cap87 + 1); char *_t88 = _t87; int _e89 = 0; memcpy(_t88, "bad status line: ", 17); _t88 += 17; _e89 = sp_str_enc_step_i(_e89, _t87, (size_t)(_t88 - _t87), _t86, _l86, sp_str_is_binary(_t86)); memcpy(_t88, _t86, _l86); _t88 += _l86; *_t88 = 0; sp_str_set_len(_t87, (size_t)(_t88 - _t87)); if (_e89 == 1) sp_str_mark_binary(_t87); (const char *)_t87; })));
+#line 606 "app/wifi_status.rb"
+    }
+#line 607 "app/wifi_status.rb"
+    lv_code = sp_str_to_i_cruby(sp_StrArray_get(sp_str_split_ws(lv_status), 1LL));
+#line 608 "app/wifi_status.rb"
+    if (!((lv_code == 200LL))) {
+#line 608 "app/wifi_status.rb"
+      sp_raise(sp_exc_msg_given(({ sp_int _t90 = lv_code; size_t _cap91 = 33UL; char *_t91 = sp_str_alloc_raw(_cap91 + 1); char *_t92 = _t91; memcpy(_t92, "server said ", 12); _t92 += 12; _t92 = sp_w_int(_t92, _t90); *_t92 = 0; sp_str_set_len(_t91, (size_t)(_t92 - _t91)); (const char *)_t91; })));
+#line 608 "app/wifi_status.rb"
+    }
+#line 609 "app/wifi_status.rb"
+    if (sp_poly_truthy(sp_re_match_poly(sp_re_pat_0, lv_hdr))) {
+#line 610 "app/wifi_status.rb"
+      lv_total = sp_oint_of(sp_str_to_i_cruby(sp_re_captures[1]));
+#line 611 "app/wifi_status.rb"
+      if ((lv_total.v <= 0LL)) {
+#line 611 "app/wifi_status.rb"
+        sp_raise(sp_exc_msg_given(((char *)_fzl_13.d)));
+#line 611 "app/wifi_status.rb"
+      }
+#line 611 "app/wifi_status.rb"
+    }
+#line 614 "app/wifi_status.rb"
+    lv_first = 1;
+#line 615 "app/wifi_status.rb"
+    while (1) {
+#line 616 "app/wifi_status.rb"
+      if ((lv_first && (!sp_str_empty_p(lv_rest)))) {
+#line 618 "app/wifi_status.rb"
+        lv_chunk = sp_box_str(lv_rest);
+#line 619 "app/wifi_status.rb"
+        lv_rest = ((char *)_fzl_6.d);
+#line 619 "app/wifi_status.rb"
+      }
+#line 619 "app/wifi_status.rb"
+      else {
+#line 621 "app/wifi_status.rb"
+        lv_chunk = ({ sp_File *_t93 = sp_poly_as_io(lv_sock, "read_nonblock"); sp_bool _e95; const char *_t94 = sp_sock_read_nb(_t93, 4096LL, 0, 0, &_e95); _t94 ? sp_box_str(_t94) : (_e95 ? sp_box_nil() : sp_box_sym(sp_sym_intern("wait_readable"))); });
+#line 621 "app/wifi_status.rb"
+      }
+#line 623 "app/wifi_status.rb"
+      if ((sp_poly_nil_p(lv_chunk) || sp_poly_eq(lv_chunk, sp_box_sym(((sp_sym)38))))) {
+#line 626 "app/wifi_status.rb"
+        if ((sp_int_sub(((sp_int)(sp_ffi_f11_esp32_millis())), lv_last_rx) > lv_idle_ms)) {
+#line 627 "app/wifi_status.rb"
+          sp_raise(sp_exc_msg_given(({ sp_int _t97 = lv_written; size_t _cap98 = 46UL; char *_t98 = sp_str_alloc_raw(_cap98 + 1); char *_t99 = _t98; memcpy(_t99, "idle timeout after ", 19); _t99 += 19; _t99 = sp_w_int_plain(_t99, _t97); memcpy(_t99, " bytes", 6); _t99 += 6; *_t99 = 0; sp_str_set_len(_t98, (size_t)(_t99 - _t98)); (const char *)_t98; })));
+#line 627 "app/wifi_status.rb"
+        }
+#line 629 "app/wifi_status.rb"
+        ((sp_int)(({ int _b101_0 = ((int)(10LL)); int _b101_r; sp_native_enter(); _b101_r = sp_ffi_f10_esp32_delay_ms(_b101_0); sp_native_leave(); _b101_r; })));
+#line 630 "app/wifi_status.rb"
+        continue;
+#line 630 "app/wifi_status.rb"
+      }
+#line 632 "app/wifi_status.rb"
+      lv_last_rx = ((sp_int)(sp_ffi_f11_esp32_millis()));
+#line 633 "app/wifi_status.rb"
+      lv_buf = lv_chunk;
+#line 634 "app/wifi_status.rb"
+      lv_got = sp_poly_bytesize(lv_chunk);
+#line 635 "app/wifi_status.rb"
+      if (lv_first) {
+#line 644 "app/wifi_status.rb"
+        while ((sp_poly_bytesize(lv_buf) < 80LL)) {
+#line 645 "app/wifi_status.rb"
+          lv_chunk = ({ sp_File *_t103 = sp_poly_as_io(lv_sock, "read_nonblock"); sp_bool _e105; const char *_t104 = sp_sock_read_nb(_t103, 4096LL, 0, 0, &_e105); _t104 ? sp_box_str(_t104) : (_e105 ? sp_box_nil() : sp_box_sym(sp_sym_intern("wait_readable"))); });
+#line 646 "app/wifi_status.rb"
+          if ((sp_poly_nil_p(lv_chunk) || sp_poly_eq(lv_chunk, sp_box_sym(((sp_sym)38))))) {
+#line 647 "app/wifi_status.rb"
+            if (sp_poly_nil_p(lv_chunk)) {
+#line 647 "app/wifi_status.rb"
+              sp_raise(sp_exc_msg_given(((char *)_fzl_14.d)));
+#line 647 "app/wifi_status.rb"
+            }
+#line 648 "app/wifi_status.rb"
+            if ((sp_int_sub(((sp_int)(sp_ffi_f11_esp32_millis())), lv_last_rx) > lv_idle_ms)) {
+#line 648 "app/wifi_status.rb"
+              sp_raise(sp_exc_msg_given(((char *)_fzl_15.d)));
+#line 648 "app/wifi_status.rb"
+            }
+#line 649 "app/wifi_status.rb"
+            ((sp_int)(({ int _b108_0 = ((int)(10LL)); int _b108_r; sp_native_enter(); _b108_r = sp_ffi_f10_esp32_delay_ms(_b108_0); sp_native_leave(); _b108_r; })));
+#line 650 "app/wifi_status.rb"
+            continue;
+#line 650 "app/wifi_status.rb"
+          }
+#line 652 "app/wifi_status.rb"
+          lv_last_rx = ((sp_int)(sp_ffi_f11_esp32_millis()));
+#line 653 "app/wifi_status.rb"
+          lv_buf = sp_poly_add(lv_buf, lv_chunk);
+#line 653 "app/wifi_status.rb"
+        }
+#line 655 "app/wifi_status.rb"
+        if ((!sp_poly_eq(sp_poly_getbyte(lv_buf, 0LL), sp_box_int(233LL)))) {
+#line 656 "app/wifi_status.rb"
+          sp_raise(sp_exc_msg_given(({ const char *_t112 = sp_str_or_empty(({ sp_RbVal _t110 = sp_poly_getbyte(lv_buf, 0LL); sp_int _t111 = 16LL; _t110.tag == SP_TAG_INT ? sp_int_to_s_base(_t110.v.i, _t111) : _t110.tag == SP_TAG_BIGINT ? sp_bigint_to_s_base(sp_poly_as_bigint(_t110), _t111) : (const char *)(sp_raise_cls("ArgumentError", "wrong number of arguments (given 1, expected 0)"), (void *)0); })); SP_GC_ROOT(_t112); size_t _l112 = sp_str_byte_len(_t112); size_t _cap113 = 25UL + _l112; char *_t113 = sp_str_alloc_raw(_cap113 + 1); char *_t114 = _t113; int _e115 = 0; memcpy(_t114, "not an esp image (magic ", 24); _t114 += 24; _e115 = sp_str_enc_step_i(_e115, _t113, (size_t)(_t114 - _t113), _t112, _l112, sp_str_is_binary(_t112)); memcpy(_t114, _t112, _l112); _t114 += _l112; _e115 = sp_str_enc_step_i(_e115, _t113, (size_t)(_t114 - _t113), ")", 1, 0); memcpy(_t114, ")", 1); _t114 += 1; *_t114 = 0; sp_str_set_len(_t113, (size_t)(_t114 - _t113)); if (_e115 == 1) sp_str_mark_binary(_t113); (const char *)_t113; })));
+#line 656 "app/wifi_status.rb"
+        }
+#line 662 "app/wifi_status.rb"
+        lv_rc = ((sp_int)(sp_ffi_f23_esp32_ota_check_version(sp_poly_arg_str_or_null(lv_buf), ((size_t)(sp_poly_bytesize(lv_buf))))));
+#line 663 "app/wifi_status.rb"
+        if (((lv_rc != 0LL) && (!lv_force))) {
+#line 663 "app/wifi_status.rb"
+          sp_raise(sp_exc_msg_given(({ sp_int _t117 = lv_rc; size_t _cap118 = 54UL; char *_t118 = sp_str_alloc_raw(_cap118 + 1); char *_t119 = _t118; memcpy(_t119, "version guard refused image (rc ", 32); _t119 += 32; _t119 = sp_w_int(_t119, _t117); memcpy(_t119, ")", 1); _t119 += 1; *_t119 = 0; sp_str_set_len(_t118, (size_t)(_t119 - _t118)); (const char *)_t118; })));
+#line 663 "app/wifi_status.rb"
+        }
+#line 664 "app/wifi_status.rb"
+        lv_first = 0;
+#line 665 "app/wifi_status.rb"
+        lv_got = sp_poly_bytesize(lv_buf);
+#line 665 "app/wifi_status.rb"
+      }
+#line 667 "app/wifi_status.rb"
+      if ((!lv_begun)) {
+#line 668 "app/wifi_status.rb"
+        lv_rc = ((sp_int)(sp_ffi_f22_esp32_ota_begin()));
+#line 669 "app/wifi_status.rb"
+        if ((lv_rc != 0LL)) {
+#line 669 "app/wifi_status.rb"
+          sp_raise(sp_exc_msg_given(({ sp_int _t121 = lv_rc; size_t _cap122 = 40UL; char *_t122 = sp_str_alloc_raw(_cap122 + 1); char *_t123 = _t122; memcpy(_t123, "ota_begin failed (", 18); _t123 += 18; _t123 = sp_w_int(_t123, _t121); memcpy(_t123, ")", 1); _t123 += 1; *_t123 = 0; sp_str_set_len(_t122, (size_t)(_t123 - _t122)); (const char *)_t122; })));
+#line 669 "app/wifi_status.rb"
+        }
+#line 670 "app/wifi_status.rb"
+        lv_begun = 1;
+#line 670 "app/wifi_status.rb"
+      }
+#line 672 "app/wifi_status.rb"
+      lv_rc = ((sp_int)(sp_ffi_f24_esp32_ota_write(sp_poly_arg_str_or_null(lv_buf), ((size_t)(lv_got)))));
+#line 673 "app/wifi_status.rb"
+      if ((lv_rc != 0LL)) {
+#line 673 "app/wifi_status.rb"
+        sp_raise(sp_exc_msg_given(({ sp_int _t125 = lv_rc; size_t _cap126 = 40UL; char *_t126 = sp_str_alloc_raw(_cap126 + 1); char *_t127 = _t126; memcpy(_t127, "ota_write failed (", 18); _t127 += 18; _t127 = sp_w_int(_t127, _t125); memcpy(_t127, ")", 1); _t127 += 1; *_t127 = 0; sp_str_set_len(_t126, (size_t)(_t127 - _t126)); (const char *)_t126; })));
+#line 673 "app/wifi_status.rb"
+      }
+#line 674 "app/wifi_status.rb"
+      lv_written = (sp_int_add(lv_written, lv_got));
+#line 675 "app/wifi_status.rb"
+      if (((!(lv_total).nil) && ({ sp_int _t128 = lv_written, _t128_r = lv_total.v; _t128 >= _t128_r; }))) {
+#line 675 "app/wifi_status.rb"
+        break;
+#line 675 "app/wifi_status.rb"
+      }
+#line 675 "app/wifi_status.rb"
+    }
+#line 677 "app/wifi_status.rb"
+    if (((!(lv_total).nil) && ({ sp_int _t129 = lv_written, _t129_r = lv_total.v; _t129 < _t129_r; }))) {
+#line 677 "app/wifi_status.rb"
+      sp_raise(sp_exc_msg_given(({ sp_int _t130 = lv_written; const char *_t131 = sp_int_opt_to_s(lv_total); SP_GC_ROOT(_t131); size_t _l131 = sp_str_byte_len(_t131); size_t _cap132 = 47UL + _l131; char *_t132 = sp_str_alloc_raw(_cap132 + 1); char *_t133 = _t132; int _e134 = 0; memcpy(_t133, "truncated: got ", 15); _t133 += 15; _t133 = sp_w_int_plain(_t133, _t130); _e134 = sp_str_enc_step_i(_e134, _t132, (size_t)(_t133 - _t132), ", expected ", 11, 0); memcpy(_t133, ", expected ", 11); _t133 += 11; _e134 = sp_str_enc_step_i(_e134, _t132, (size_t)(_t133 - _t132), _t131, _l131, sp_str_is_binary(_t131)); memcpy(_t133, _t131, _l131); _t133 += _l131; *_t133 = 0; sp_str_set_len(_t132, (size_t)(_t133 - _t132)); if (_e134 == 1) sp_str_mark_binary(_t132); (const char *)_t132; })));
+#line 677 "app/wifi_status.rb"
+    }
+#line 680 "app/wifi_status.rb"
+    lv_rc = ((sp_int)(sp_ffi_f25_esp32_ota_end(((int)(0LL)))));
+#line 681 "app/wifi_status.rb"
+    if ((lv_rc != 0LL)) {
+#line 681 "app/wifi_status.rb"
+      sp_raise(sp_exc_msg_given(({ sp_int _t136 = lv_rc; size_t _cap137 = 38UL; char *_t137 = sp_str_alloc_raw(_cap137 + 1); char *_t138 = _t137; memcpy(_t138, "ota_end failed (", 16); _t138 += 16; _t138 = sp_w_int(_t138, _t136); memcpy(_t138, ")", 1); _t138 += 1; *_t138 = 0; sp_str_set_len(_t137, (size_t)(_t138 - _t137)); (const char *)_t137; })));
+#line 681 "app/wifi_status.rb"
+    }
+#line 682 "app/wifi_status.rb"
+    sp_StrPolyHash *_t139 = sp_StrPolyHash_new();
+#line 682 "app/wifi_status.rb"
+    SP_GC_ROOT(_t139);
+#line 682 "app/wifi_status.rb"
+    sp_StrPolyHash_set(_t139, ((char *)_fzl_16.d), sp_box_str(({ const char *_t141 = (sp_str_dup_external(sp_ffi_f21_esp32_ota_partition_name())); SP_GC_ROOT(_t141); sp_str_delete(_t141, ((char *)_fzl_17.d)); })));
+#line 682 "app/wifi_status.rb"
+    sp_StrPolyHash_set(_t139, ((char *)_fzl_3.d), sp_box_str(((char *)_fzl_18.d)));
+#line 682 "app/wifi_status.rb"
+    sp_StrPolyHash_set(_t139, ((char *)_fzl_4.d), sp_box_int(lv_written));
+#line 682 "app/wifi_status.rb"
+    sp_StrPolyHash_set(_t139, ((char *)_fzl_19.d), sp_box_nil());
+#line 682 "app/wifi_status.rb"
+    _t64 = _t139;
+#line 682 "app/wifi_status.rb"
+    sp_exc_top--;
+#line 682 "app/wifi_status.rb"
   }
-#line 678 "app/wifi_status.rb"
+#line 682 "app/wifi_status.rb"
+  else {
+#line 682 "app/wifi_status.rb"
+    sp_exc_top--;
+#line 682 "app/wifi_status.rb"
+    sp_gc_nroots = sp_exc_rootmark[sp_exc_top]; sp_rescue_sp = sp_rescue_mark[sp_exc_top];
+#line 682 "app/wifi_status.rb"
+    if (sp_unwind_kind == SP_UNWIND_NONE) {
+#line 682 "app/wifi_status.rb"
+      if (strcmp((const char *)sp_last_exc_cls, "FiberKillSignal") == 0) { _excf66 = 1; _excmsg66 = sp_exc_msg[sp_exc_top]; _exccls66 = sp_exc_cls[sp_exc_top]; }
+#line 682 "app/wifi_status.rb"
+      else {
+#line 682 "app/wifi_status.rb"
+        sp_exc_check_depth(); if (SP_UNLIKELY(sp_exc_top + 1 >= SP_EXC_STACK_MAX)) sp_stack_too_deep();
+#line 682 "app/wifi_status.rb"
+        sp_exc_msg[sp_exc_top+1] = sp_exc_msg[sp_exc_top]; sp_exc_cls[sp_exc_top+1] = sp_exc_cls[sp_exc_top]; sp_exc_obj[sp_exc_top+1] = sp_exc_obj[sp_exc_top];
+#line 682 "app/wifi_status.rb"
+        sp_exc_rootmark[sp_exc_top] = sp_gc_nroots; sp_rescue_mark[sp_exc_top] = sp_rescue_sp;
+#line 682 "app/wifi_status.rb"
+        sp_exc_msg[sp_exc_top] = 0; sp_exc_obj[sp_exc_top] = 0; sp_exc_top++;
+#line 682 "app/wifi_status.rb"
+        if (setjmp(sp_exc_stack[sp_exc_top-1]) == 0) {
+#line 682 "app/wifi_status.rb"
+          const char *_rcls_142 = (const char *)sp_last_exc_cls; (void)_rcls_142;
+#line 682 "app/wifi_status.rb"
+          const char *_rmsg_142 = sp_exc_msg[sp_exc_top]; (void)_rmsg_142;
+#line 682 "app/wifi_status.rb"
+          if (sp_exc_is_standard_error(_rcls_142)) {
+#line 682 "app/wifi_status.rb"
+            sp_Exception *_ce_142 = sp_exc_obj[sp_exc_top] ? (sp_Exception *)sp_exc_obj[sp_exc_top] : sp_exc_new_for_catch(_rcls_142, _rmsg_142);
+#line 682 "app/wifi_status.rb"
+            sp_rescue_push((void *)_ce_142);
+#line 682 "app/wifi_status.rb"
+            if (_ce_142->backtrace == NULL) { sp_StrArray *_bt = sp_backtrace_captured(); sp_gc_wb((void *)_ce_142); _ce_142->backtrace = _bt; }
+#line 682 "app/wifi_status.rb"
+            if (!_ce_142->cause) { sp_gc_wb((void *)_ce_142); _ce_142->cause = (sp_Exception *)sp_pending_cause; } sp_pending_cause = NULL;
+#line 682 "app/wifi_status.rb"
+            lv_e = _ce_142;
+#line 685 "app/wifi_status.rb"
+            if (lv_begun) {
+#line 686 "app/wifi_status.rb"
+              sp_exc_check_depth();
+#line 686 "app/wifi_status.rb"
+              sp_exc_rootmark[sp_exc_top] = sp_gc_nroots; sp_rescue_mark[sp_exc_top] = sp_rescue_sp;
+#line 686 "app/wifi_status.rb"
+              sp_exc_msg[sp_exc_top] = 0; sp_exc_obj[sp_exc_top] = 0; sp_exc_top++;
+#line 686 "app/wifi_status.rb"
+              if (setjmp(sp_exc_stack[sp_exc_top-1]) == 0) {
+#line 687 "app/wifi_status.rb"
+                ((sp_int)(sp_ffi_f25_esp32_ota_end(((int)(1LL)))));
+#line 687 "app/wifi_status.rb"
+                sp_exc_top--;
+#line 687 "app/wifi_status.rb"
+              }
+#line 687 "app/wifi_status.rb"
+              else {
+#line 687 "app/wifi_status.rb"
+                sp_exc_top--;
+#line 687 "app/wifi_status.rb"
+                sp_gc_nroots = sp_exc_rootmark[sp_exc_top]; sp_rescue_sp = sp_rescue_mark[sp_exc_top];
+#line 687 "app/wifi_status.rb"
+                if (sp_unwind_kind == SP_UNWIND_NONE) {
+#line 687 "app/wifi_status.rb"
+                  if (strcmp((const char *)sp_last_exc_cls, "FiberKillSignal") == 0) sp_raise_cls("FiberKillSignal", sp_exc_msg[sp_exc_top]);
+#line 687 "app/wifi_status.rb"
+                  else {
+#line 687 "app/wifi_status.rb"
+                    const char *_rcls_145 = (const char *)sp_last_exc_cls; (void)_rcls_145;
+#line 687 "app/wifi_status.rb"
+                    const char *_rmsg_145 = sp_exc_msg[sp_exc_top]; (void)_rmsg_145;
+#line 687 "app/wifi_status.rb"
+                    if (sp_exc_cls_matches(_rcls_145, "StandardError")) {
+#line 687 "app/wifi_status.rb"
+                      sp_Exception *_ce_145 = sp_exc_obj[sp_exc_top] ? (sp_Exception *)sp_exc_obj[sp_exc_top] : sp_exc_new_for_catch(_rcls_145, _rmsg_145);
+#line 687 "app/wifi_status.rb"
+                      sp_rescue_push((void *)_ce_145);
+#line 687 "app/wifi_status.rb"
+                      if (_ce_145->backtrace == NULL) { sp_StrArray *_bt = sp_backtrace_captured(); sp_gc_wb((void *)_ce_145); _ce_145->backtrace = _bt; }
+#line 687 "app/wifi_status.rb"
+                      if (!_ce_145->cause) { sp_gc_wb((void *)_ce_145); _ce_145->cause = (sp_Exception *)sp_pending_cause; } sp_pending_cause = NULL;
+#line 689 "app/wifi_status.rb"
+                      0;
+#line 689 "app/wifi_status.rb"
+                      sp_rescue_sp--;
+#line 689 "app/wifi_status.rb"
+                    }
+#line 689 "app/wifi_status.rb"
+                    else {
+#line 689 "app/wifi_status.rb"
+                      sp_pending_exc_obj = sp_exc_obj[sp_exc_top]; sp_bt_keep = 1;
+#line 689 "app/wifi_status.rb"
+                      sp_raise_cls(_rcls_145, _rmsg_145);
+#line 689 "app/wifi_status.rb"
+                    }
+#line 689 "app/wifi_status.rb"
+                  }
+#line 689 "app/wifi_status.rb"
+                }
+#line 689 "app/wifi_status.rb"
+                if (sp_unwind_kind != SP_UNWIND_NONE) sp_unwind_resume();
+#line 689 "app/wifi_status.rb"
+              }
+#line 689 "app/wifi_status.rb"
+            }
+#line 692 "app/wifi_status.rb"
+            sp_StrPolyHash *_t146 = sp_StrPolyHash_new();
+#line 692 "app/wifi_status.rb"
+            SP_GC_ROOT(_t146);
+#line 692 "app/wifi_status.rb"
+            sp_StrPolyHash_set(_t146, ((char *)_fzl_16.d), sp_box_str((lv_begun ? ({ const char *_t148 = (sp_str_dup_external(sp_ffi_f21_esp32_ota_partition_name())); SP_GC_ROOT(_t148); sp_str_delete(_t148, ((char *)_fzl_17.d)); }) : (0, NULL))));
+#line 692 "app/wifi_status.rb"
+            sp_StrPolyHash_set(_t146, ((char *)_fzl_3.d), sp_box_str(((char *)_fzl_20.d)));
+#line 692 "app/wifi_status.rb"
+            sp_StrPolyHash_set(_t146, ((char *)_fzl_4.d), sp_box_int(lv_written));
+#line 692 "app/wifi_status.rb"
+            sp_Exception *_t149 = lv_e;
+#line 692 "app/wifi_status.rb"
+            sp_Exception *_t151 = lv_e;
+#line 692 "app/wifi_status.rb"
+            sp_StrPolyHash_set(_t146, ((char *)_fzl_19.d), sp_box_str(({ const char *_t150 = sp_class_to_s(((sp_Class){0, _t149 ? sp_exc_class_name(_t149) : SPL("NilClass")})); SP_GC_ROOT(_t150); size_t _l150 = sp_str_byte_len(_t150); const char *_t152 = sp_str_or_empty((_t151 ? sp_exc_message(_t151) : sp_str_empty)); SP_GC_ROOT(_t152); size_t _l152 = sp_str_byte_len(_t152); size_t _cap153 = 2UL + _l150 + _l152; char *_t153 = sp_str_alloc_raw(_cap153 + 1); char *_t154 = _t153; int _e155 = -1; _e155 = sp_str_enc_step_i(_e155, _t153, (size_t)(_t154 - _t153), _t150, _l150, sp_str_is_binary(_t150)); memcpy(_t154, _t150, _l150); _t154 += _l150; _e155 = sp_str_enc_step_i(_e155, _t153, (size_t)(_t154 - _t153), ": ", 2, 0); memcpy(_t154, ": ", 2); _t154 += 2; _e155 = sp_str_enc_step_i(_e155, _t153, (size_t)(_t154 - _t153), _t152, _l152, sp_str_is_binary(_t152)); memcpy(_t154, _t152, _l152); _t154 += _l152; *_t154 = 0; sp_str_set_len(_t153, (size_t)(_t154 - _t153)); if (_e155 == 1) sp_str_mark_binary(_t153); (const char *)_t153; })));
+#line 692 "app/wifi_status.rb"
+            _t64 = _t146;
+#line 692 "app/wifi_status.rb"
+            sp_rescue_sp--;
+#line 692 "app/wifi_status.rb"
+          }
+#line 692 "app/wifi_status.rb"
+          else {
+#line 692 "app/wifi_status.rb"
+            sp_pending_exc_obj = sp_exc_obj[sp_exc_top]; sp_bt_keep = 1;
+#line 692 "app/wifi_status.rb"
+            sp_raise_cls(_rcls_142, _rmsg_142);
+#line 692 "app/wifi_status.rb"
+          }
+#line 692 "app/wifi_status.rb"
+          sp_exc_top--;
+#line 692 "app/wifi_status.rb"
+        }
+#line 692 "app/wifi_status.rb"
+        else {
+#line 692 "app/wifi_status.rb"
+          sp_exc_top--;
+#line 692 "app/wifi_status.rb"
+          sp_gc_nroots = sp_exc_rootmark[sp_exc_top]; sp_rescue_sp = sp_rescue_mark[sp_exc_top];
+#line 692 "app/wifi_status.rb"
+          if (sp_unwind_kind == SP_UNWIND_NONE) { sp_Exception *_xo66 = sp_exc_obj[sp_exc_top] ? (sp_Exception *)sp_exc_obj[sp_exc_top] : sp_exc_new_for_catch(sp_exc_cls[sp_exc_top], sp_exc_msg[sp_exc_top]); if (!_xo66->cause) { sp_gc_wb((void *)_xo66); _xo66->cause = (sp_Exception *)sp_pending_cause; } sp_pending_cause = NULL; _excf66 = 1; _excmsg66 = sp_exc_msg[sp_exc_top]; _exccls66 = sp_exc_cls[sp_exc_top]; _excobj66 = _xo66; }
+#line 692 "app/wifi_status.rb"
+        }
+#line 692 "app/wifi_status.rb"
+      }
+#line 692 "app/wifi_status.rb"
+    }
+#line 692 "app/wifi_status.rb"
+  }
+#line 692 "app/wifi_status.rb"
+_ensure66: ;
+#line 692 "app/wifi_status.rb"
+  int _uk66 = sp_unwind_kind, _ut66 = sp_unwind_target, _ue66 = sp_unwind_exc_top; sp_proc_home *_uh66 = sp_unwind_home;
+#line 692 "app/wifi_status.rb"
+  void *_ic66 = sp_inflight_cause; if (_excf66) sp_inflight_cause = sp_exc_ensure_obj(&_excobj66, &_excmsg66, _exccls66);
+#line 692 "app/wifi_status.rb"
+  { void *_icr66 SP_CLEANUP(sp_inflight_restore) = _ic66; (void)_icr66;
+#line 692 "app/wifi_status.rb"
+  int _rsp66 SP_CLEANUP(sp_rescue_sp_restore) = sp_rescue_sp; if (_excf66) sp_rescue_push(sp_inflight_cause);
+#line 695 "app/wifi_status.rb"
+  sp_exc_check_depth();
+#line 695 "app/wifi_status.rb"
+  sp_exc_rootmark[sp_exc_top] = sp_gc_nroots; sp_rescue_mark[sp_exc_top] = sp_rescue_sp;
+#line 695 "app/wifi_status.rb"
+  sp_exc_msg[sp_exc_top] = 0; sp_exc_obj[sp_exc_top] = 0; sp_exc_top++;
+#line 695 "app/wifi_status.rb"
+  if (setjmp(sp_exc_stack[sp_exc_top-1]) == 0) {
+#line 696 "app/wifi_status.rb"
+    if (sp_poly_truthy(lv_sock)) {
+#line 696 "app/wifi_status.rb"
+      ({ sp_RbVal _t158 = lv_sock; SP_GC_ROOT_RBVAL(_t158); _t158.tag == SP_TAG_OBJ && _t158.cls_id == SP_BUILTIN_QUEUE ? ((void)sp_Queue_close((sp_queue *)_t158.v.p), _t158) : _t158.tag == SP_TAG_OBJ && _t158.cls_id == SP_BUILTIN_DIR ? ((void)sp_Dir_close((sp_Dir *)_t158.v.p), sp_box_nil()) : ({ sp_File *_t157 = sp_poly_as_io(_t158, "close"); (void)sp_File_close(_t157); sp_box_nil(); }); });
+#line 696 "app/wifi_status.rb"
+    }
+#line 696 "app/wifi_status.rb"
+    sp_exc_top--;
+#line 696 "app/wifi_status.rb"
+  }
+#line 696 "app/wifi_status.rb"
+  else {
+#line 696 "app/wifi_status.rb"
+    sp_exc_top--;
+#line 696 "app/wifi_status.rb"
+    sp_gc_nroots = sp_exc_rootmark[sp_exc_top]; sp_rescue_sp = sp_rescue_mark[sp_exc_top];
+#line 696 "app/wifi_status.rb"
+    if (sp_unwind_kind == SP_UNWIND_NONE) {
+#line 696 "app/wifi_status.rb"
+      if (strcmp((const char *)sp_last_exc_cls, "FiberKillSignal") == 0) sp_raise_cls("FiberKillSignal", sp_exc_msg[sp_exc_top]);
+#line 696 "app/wifi_status.rb"
+      else {
+#line 696 "app/wifi_status.rb"
+        const char *_rcls_159 = (const char *)sp_last_exc_cls; (void)_rcls_159;
+#line 696 "app/wifi_status.rb"
+        const char *_rmsg_159 = sp_exc_msg[sp_exc_top]; (void)_rmsg_159;
+#line 696 "app/wifi_status.rb"
+        if (sp_exc_cls_matches(_rcls_159, "StandardError")) {
+#line 696 "app/wifi_status.rb"
+          sp_Exception *_ce_159 = sp_exc_obj[sp_exc_top] ? (sp_Exception *)sp_exc_obj[sp_exc_top] : sp_exc_new_for_catch(_rcls_159, _rmsg_159);
+#line 696 "app/wifi_status.rb"
+          sp_rescue_push((void *)_ce_159);
+#line 696 "app/wifi_status.rb"
+          if (_ce_159->backtrace == NULL) { sp_StrArray *_bt = sp_backtrace_captured(); sp_gc_wb((void *)_ce_159); _ce_159->backtrace = _bt; }
+#line 696 "app/wifi_status.rb"
+          if (!_ce_159->cause) { sp_gc_wb((void *)_ce_159); _ce_159->cause = (sp_Exception *)sp_pending_cause; } sp_pending_cause = NULL;
+#line 698 "app/wifi_status.rb"
+          0;
+#line 698 "app/wifi_status.rb"
+          sp_rescue_sp--;
+#line 698 "app/wifi_status.rb"
+        }
+#line 698 "app/wifi_status.rb"
+        else {
+#line 698 "app/wifi_status.rb"
+          sp_pending_exc_obj = sp_exc_obj[sp_exc_top]; sp_bt_keep = 1;
+#line 698 "app/wifi_status.rb"
+          sp_raise_cls(_rcls_159, _rmsg_159);
+#line 698 "app/wifi_status.rb"
+        }
+#line 698 "app/wifi_status.rb"
+      }
+#line 698 "app/wifi_status.rb"
+    }
+#line 698 "app/wifi_status.rb"
+    if (sp_unwind_kind != SP_UNWIND_NONE) sp_unwind_resume();
+#line 698 "app/wifi_status.rb"
+  }
+#line 698 "app/wifi_status.rb"
+  }
+#line 698 "app/wifi_status.rb"
   sp_unwind_kind = _uk66; sp_unwind_target = _ut66; sp_unwind_exc_top = _ue66; sp_unwind_home = _uh66;
-#line 678 "app/wifi_status.rb"
+#line 698 "app/wifi_status.rb"
   if (sp_unwind_kind != SP_UNWIND_NONE) sp_unwind_resume();
-#line 678 "app/wifi_status.rb"
+#line 698 "app/wifi_status.rb"
   if (_retf66) return _retv66;
-#line 678 "app/wifi_status.rb"
+#line 698 "app/wifi_status.rb"
   if (_excf66) { sp_pending_exc_obj = _excobj66; sp_reraise_continues = 1; sp_raise_cls(_exccls66, _excmsg66); }
-#line 678 "app/wifi_status.rb"
+#line 698 "app/wifi_status.rb"
   return _t64;
-#line 678 "app/wifi_status.rb"
+#line 698 "app/wifi_status.rb"
   return NULL;
-#line 678 "app/wifi_status.rb"
+#line 698 "app/wifi_status.rb"
 }
 #line 1 "<spinel-synthesized>"
 static int _sp_main_argc; static char **_sp_main_argv; static int _sp_main_rc;
@@ -1769,39 +1789,39 @@ void _sp_main_body(void){
 #line 1 "<spinel-synthesized>"
     volatile sp_bool lv_ota_valid_latch = 0;
 #line 1 "<spinel-synthesized>"
-    volatile sp_RbVal lv_client__bp1541 = sp_box_nil();
+    volatile sp_RbVal lv_client__bp1561 = sp_box_nil();
 #line 1 "<spinel-synthesized>"
-    _gcf.p[7] = SP_GC_ENTRY_RBVAL(lv_client__bp1541);
+    _gcf.p[7] = SP_GC_ENTRY_RBVAL(lv_client__bp1561);
 #line 1 "<spinel-synthesized>"
-    sp_Exception *volatile  lv_e__bp1541 = NULL;
+    sp_Exception *volatile  lv_e__bp1561 = NULL;
 #line 1 "<spinel-synthesized>"
-    _gcf.p[8] = SP_GC_ENTRY_PTR(lv_e__bp1541);
+    _gcf.p[8] = SP_GC_ENTRY_PTR(lv_e__bp1561);
 #line 1 "<spinel-synthesized>"
     const char *volatile  lv_req = NULL;
 #line 1 "<spinel-synthesized>"
     _gcf.p[9] = SP_GC_ENTRY_STR(lv_req);
 #line 1 "<spinel-synthesized>"
-    volatile sp_RbVal lv_chunk__bp1589 = sp_box_nil();
+    volatile sp_RbVal lv_chunk__bp1609 = sp_box_nil();
 #line 1 "<spinel-synthesized>"
-    _gcf.p[10] = SP_GC_ENTRY_RBVAL(lv_chunk__bp1589);
+    _gcf.p[10] = SP_GC_ENTRY_RBVAL(lv_chunk__bp1609);
 #line 1 "<spinel-synthesized>"
-    volatile sp_oint lv_rssi__bp1541 = sp_oint_of(0);
+    volatile sp_oint lv_rssi__bp1561 = sp_oint_of(0);
 #line 1 "<spinel-synthesized>"
     volatile sp_int lv_run_slot = 0;
 #line 1 "<spinel-synthesized>"
-    const char *volatile  lv_slot_s__bp1541 = NULL;
+    const char *volatile  lv_slot_s__bp1561 = NULL;
 #line 1 "<spinel-synthesized>"
-    _gcf.p[11] = SP_GC_ENTRY_STR(lv_slot_s__bp1541);
+    _gcf.p[11] = SP_GC_ENTRY_STR(lv_slot_s__bp1561);
 #line 1 "<spinel-synthesized>"
-    volatile sp_int lv_chan__bp1541 = 0;
+    volatile sp_int lv_chan__bp1561 = 0;
 #line 1 "<spinel-synthesized>"
-    const char *volatile  lv_ssid__bp1541 = NULL;
+    const char *volatile  lv_ssid__bp1561 = NULL;
 #line 1 "<spinel-synthesized>"
-    _gcf.p[12] = SP_GC_ENTRY_STR(lv_ssid__bp1541);
+    _gcf.p[12] = SP_GC_ENTRY_STR(lv_ssid__bp1561);
 #line 1 "<spinel-synthesized>"
-    const char *volatile  lv_path__bp1541 = NULL;
+    const char *volatile  lv_path__bp1561 = NULL;
 #line 1 "<spinel-synthesized>"
-    _gcf.p[13] = SP_GC_ENTRY_STR(lv_path__bp1541);
+    _gcf.p[13] = SP_GC_ENTRY_STR(lv_path__bp1561);
 #line 1 "<spinel-synthesized>"
     const char *volatile  lv_q = NULL;
 #line 1 "<spinel-synthesized>"
@@ -1815,7 +1835,7 @@ void _sp_main_body(void){
 #line 1 "<spinel-synthesized>"
     _gcf.p[16] = SP_GC_ENTRY_STR(lv_url);
 #line 1 "<spinel-synthesized>"
-    volatile sp_bool lv_force__bp1541 = 0;
+    volatile sp_bool lv_force__bp1561 = 0;
 #line 1 "<spinel-synthesized>"
     const char *volatile  lv_hostport = NULL;
 #line 1 "<spinel-synthesized>"
@@ -1845,24 +1865,24 @@ void _sp_main_body(void){
 #line 1 "<spinel-synthesized>"
     volatile sp_int lv_mv = 0;
 #line 1 "<spinel-synthesized>"
-    volatile sp_float lv_cell_v__bp1541 = 0.0;
+    volatile sp_float lv_cell_v__bp1561 = 0.0;
 #line 1 "<spinel-synthesized>"
-    const char *volatile  lv_time_s__bp1541 = NULL;
+    const char *volatile  lv_time_s__bp1561 = NULL;
 #line 1 "<spinel-synthesized>"
-    _gcf.p[22] = SP_GC_ENTRY_STR(lv_time_s__bp1541);
+    _gcf.p[22] = SP_GC_ENTRY_STR(lv_time_s__bp1561);
 #line 1 "<spinel-synthesized>"
 
-#line 13 "/home/tomek/spinel-esp32/vendor/spinel/builtins/enumerator.rb"
-#line 19 "/home/tomek/spinel-esp32/vendor/spinel/builtins/enumerator.rb"
-#line 25 "/home/tomek/spinel-esp32/vendor/spinel/builtins/enumerator.rb"
-#line 31 "/home/tomek/spinel-esp32/vendor/spinel/builtins/enumerator.rb"
-#line 40 "/home/tomek/spinel-esp32/vendor/spinel/builtins/enumerator.rb"
-#line 45 "/home/tomek/spinel-esp32/vendor/spinel/builtins/enumerator.rb"
-#line 59 "/home/tomek/spinel-esp32/vendor/spinel/builtins/enumerator.rb"
-#line 65 "/home/tomek/spinel-esp32/vendor/spinel/builtins/enumerator.rb"
-#line 74 "/home/tomek/spinel-esp32/vendor/spinel/builtins/enumerator.rb"
-#line 87 "/home/tomek/spinel-esp32/vendor/spinel/builtins/enumerator.rb"
-#line 97 "/home/tomek/spinel-esp32/vendor/spinel/builtins/enumerator.rb"
+#line 13 "/home/tomek/spinel-esp32-pr2/vendor/spinel/builtins/enumerator.rb"
+#line 19 "/home/tomek/spinel-esp32-pr2/vendor/spinel/builtins/enumerator.rb"
+#line 25 "/home/tomek/spinel-esp32-pr2/vendor/spinel/builtins/enumerator.rb"
+#line 31 "/home/tomek/spinel-esp32-pr2/vendor/spinel/builtins/enumerator.rb"
+#line 40 "/home/tomek/spinel-esp32-pr2/vendor/spinel/builtins/enumerator.rb"
+#line 45 "/home/tomek/spinel-esp32-pr2/vendor/spinel/builtins/enumerator.rb"
+#line 59 "/home/tomek/spinel-esp32-pr2/vendor/spinel/builtins/enumerator.rb"
+#line 65 "/home/tomek/spinel-esp32-pr2/vendor/spinel/builtins/enumerator.rb"
+#line 74 "/home/tomek/spinel-esp32-pr2/vendor/spinel/builtins/enumerator.rb"
+#line 87 "/home/tomek/spinel-esp32-pr2/vendor/spinel/builtins/enumerator.rb"
+#line 97 "/home/tomek/spinel-esp32-pr2/vendor/spinel/builtins/enumerator.rb"
 #line 27 "app/wifi_status.rb"
   cst_SSID = ({ const char *_t161 = ((char *)_fzl_21.d); const char * _t163 = ((char *)_fzl_22.d); const char *_t160 = getenv(_t161); const char * _t162 = _t160 ? sp_env_str(_t160) : _t163; _t162; });
 #line 28 "app/wifi_status.rb"
@@ -1874,815 +1894,815 @@ void _sp_main_body(void){
 #line 31 "app/wifi_status.rb"
   cst_DIVIDER = 2LL;
 #line 33 "app/wifi_status.rb"
-#line 398 "app/wifi_status.rb"
+#line 418 "app/wifi_status.rb"
   lv_ssid_buf = sp_str_repeat(sp_str_b(((char *)_fzl_17.d)), 33LL);
-#line 399 "app/wifi_status.rb"
+#line 419 "app/wifi_status.rb"
   lv_chan_buf = sp_str_repeat(sp_str_b(((char *)_fzl_17.d)), 8LL);
-#line 400 "app/wifi_status.rb"
+#line 420 "app/wifi_status.rb"
   lv_ip_buf = sp_str_repeat(sp_str_b(((char *)_fzl_17.d)), 48LL);
-#line 401 "app/wifi_status.rb"
+#line 421 "app/wifi_status.rb"
   lv_time_buf = sp_str_repeat(sp_str_b(((char *)_fzl_17.d)), 32LL);
-#line 403 "app/wifi_status.rb"
-#line 410 "app/wifi_status.rb"
-#line 438 "app/wifi_status.rb"
+#line 423 "app/wifi_status.rb"
+#line 430 "app/wifi_status.rb"
+#line 458 "app/wifi_status.rb"
   ((sp_int)(sp_ffi_f19_esp32_gc_tune()));
-#line 439 "app/wifi_status.rb"
-  ((sp_int)(sp_ffi_f2_esp32_led_init(((int)(cst_LED_PIN)))));
-#line 440 "app/wifi_status.rb"
-  ((sp_int)(sp_ffi_f3_esp32_led_write(((int)(cst_LED_PIN)), ((int)(1LL)))));
-#line 441 "app/wifi_status.rb"
-  lv_rc = ((sp_int)(sp_ffi_f4_esp32_wifi_init(cst_SSID, cst_PASSWORD)));
-#line 442 "app/wifi_status.rb"
-  if ((lv_rc != 0LL)) {
-#line 443 "app/wifi_status.rb"
-    { const char *_ps = (const char *)(({ sp_int _t172 = lv_rc; size_t _cap173 = 45UL; char *_t173 = sp_str_alloc_raw(_cap173 + 1); char *_t174 = _t173; memcpy(_t174, "esp32_wifi_init failed: ", 24); _t174 += 24; _t174 = sp_w_int(_t174, _t172); *_t174 = 0; sp_str_set_len(_t173, (size_t)(_t174 - _t173)); (const char *)_t173; })); sp_puts_str_line(_ps); }
-#line 444 "app/wifi_status.rb"
-    sp_abort_raise(((char *)_fzl_25.d));
-#line 444 "app/wifi_status.rb"
-  }
-#line 446 "app/wifi_status.rb"
-  ((sp_int)(sp_ffi_f0_esp32_adc_init()));
-#line 447 "app/wifi_status.rb"
-  { const char *_ps = (const char *)(((char *)_fzl_26.d)); sp_puts_str_line(_ps); }
-#line 448 "app/wifi_status.rb"
-  lv_n = ((sp_int)(sp_ffi_f6_esp32_wifi_scan()));
-#line 449 "app/wifi_status.rb"
-  { const char *_ps = (const char *)(({ sp_int _t177 = lv_n; size_t _cap178 = 41UL; char *_t178 = sp_str_alloc_raw(_cap178 + 1); char *_t179 = _t178; memcpy(_t179, "Scan found ", 11); _t179 += 11; _t179 = sp_w_int(_t179, _t177); memcpy(_t179, " networks", 9); _t179 += 9; *_t179 = 0; sp_str_set_len(_t178, (size_t)(_t179 - _t178)); (const char *)_t178; })); sp_puts_str_line(_ps); }
-#line 450 "app/wifi_status.rb"
-  ((sp_int)(sp_ffi_f5_esp32_wifi_connect()));
-#line 451 "app/wifi_status.rb"
-  { const char *_ps = (const char *)(({ const char *_t181 = sp_str_or_empty(cst_SSID); SP_GC_ROOT(_t181); size_t _l181 = sp_str_byte_len(_t181); size_t _cap182 = 18UL + _l181; char *_t182 = sp_str_alloc_raw(_cap182 + 1); char *_t183 = _t182; int _e184 = 0; memcpy(_t183, "Connecting to ", 14); _t183 += 14; _e184 = sp_str_enc_step_i(_e184, _t182, (size_t)(_t183 - _t182), _t181, _l181, sp_str_is_binary(_t181)); memcpy(_t183, _t181, _l181); _t183 += _l181; _e184 = sp_str_enc_step_i(_e184, _t182, (size_t)(_t183 - _t182), " ...", 4, 0); memcpy(_t183, " ...", 4); _t183 += 4; *_t183 = 0; sp_str_set_len(_t182, (size_t)(_t183 - _t182)); if (_e184 == 1) sp_str_mark_binary(_t182); (const char *)_t182; })); sp_puts_str_line(_ps); }
-#line 452 "app/wifi_status.rb"
-  _gcf.v[0] = sp_box_nil();
-#line 452 "app/wifi_status.rb"
-  int _brkexc187 = sp_exc_top, _brkcat187 = sp_catch_top, _brkslot187 = 0; (void)_brkexc187; (void)_brkcat187; (void)_brkslot187;
-#line 452 "app/wifi_status.rb"
-  int _t186 = sp_gc_nroots; (void)_t186;
-#line 452 "app/wifi_status.rb"
-  sp_RbVal _brkv187 = sp_box_nil(); (void)_brkv187; sp_int _brklt187 = 0; (void)_brklt187;
-#line 452 "app/wifi_status.rb"
-  {
-#line 452 "app/wifi_status.rb"
-    _gcf.v[0] = sp_box_int(({ for (sp_int _t188 = 0; _t188 < 30LL; _t188++) {
-#line 453 "app/wifi_status.rb"
-  ((sp_int)(({ int _b190_0 = ((int)(500LL)); int _b190_r; sp_native_enter(); _b190_r = sp_ffi_f10_esp32_delay_ms(_b190_0); sp_native_leave(); _b190_r; })));
-#line 454 "app/wifi_status.rb"
-  if ((((sp_int)(sp_ffi_f7_esp32_wifi_connected())) != 0LL)) {
-#line 454 "app/wifi_status.rb"
-    _brkv187 = sp_box_nil(); goto _brklbl187;
-#line 454 "app/wifi_status.rb"
-  }
-#line 454 "app/wifi_status.rb"
-}
-#line 454 "app/wifi_status.rb"
-30LL; }));
-#line 454 "app/wifi_status.rb"
-    goto _brkend187;
-#line 454 "app/wifi_status.rb"
-  }
-#line 454 "app/wifi_status.rb"
-  _brklbl187: SP_UNUSED;
-#line 454 "app/wifi_status.rb"
-  sp_gc_nroots = _t186;
-#line 454 "app/wifi_status.rb"
-  _gcf.v[0] = _brkv187;
-#line 454 "app/wifi_status.rb"
-  _brkend187: SP_UNUSED;
-#line 454 "app/wifi_status.rb"
-  (void)_gcf.v[0];
-#line 456 "app/wifi_status.rb"
-  if ((((sp_int)(sp_ffi_f7_esp32_wifi_connected())) == 0LL)) {
-#line 457 "app/wifi_status.rb"
-    { const char *_ps = (const char *)(((char *)_fzl_27.d)); sp_puts_str_line(_ps); }
-#line 457 "app/wifi_status.rb"
-  }
-#line 457 "app/wifi_status.rb"
-  else {
 #line 459 "app/wifi_status.rb"
-    ((sp_int)(sp_ffi_f9_esp32_wifi_ip(((void *)(uintptr_t)(lv_ip_buf)), ((int)(48LL)))));
+  ((sp_int)(sp_ffi_f2_esp32_led_init(((int)(cst_LED_PIN)))));
 #line 460 "app/wifi_status.rb"
-    lv_ip = sp_str_strip(sp_str_delete(lv_ip_buf, ((char *)_fzl_17.d)));
+  ((sp_int)(sp_ffi_f3_esp32_led_write(((int)(cst_LED_PIN)), ((int)(1LL)))));
 #line 461 "app/wifi_status.rb"
-    { const char *_ps = (const char *)(({ const char *_t194 = sp_str_or_empty(lv_ip); SP_GC_ROOT(_t194); size_t _l194 = sp_str_byte_len(_t194); size_t _cap195 = 20UL + _l194; char *_t195 = sp_str_alloc_raw(_cap195 + 1); char *_t196 = _t195; int _e197 = 0; memcpy(_t196, "WiFi: connected, IP ", 20); _t196 += 20; _e197 = sp_str_enc_step_i(_e197, _t195, (size_t)(_t196 - _t195), _t194, _l194, sp_str_is_binary(_t194)); memcpy(_t196, _t194, _l194); _t196 += _l194; *_t196 = 0; sp_str_set_len(_t195, (size_t)(_t196 - _t195)); if (_e197 == 1) sp_str_mark_binary(_t195); (const char *)_t195; })); sp_puts_str_line(_ps); }
+  lv_rc = ((sp_int)(sp_ffi_f4_esp32_wifi_init(cst_SSID, cst_PASSWORD)));
+#line 462 "app/wifi_status.rb"
+  if ((lv_rc != 0LL)) {
 #line 463 "app/wifi_status.rb"
-    lv_rc = ((sp_int)(sp_ffi_f12_esp32_mdns_start(((char *)_fzl_28.d), ((char *)_fzl_29.d), lv_ip)));
+    { const char *_ps = (const char *)(({ sp_int _t172 = lv_rc; size_t _cap173 = 45UL; char *_t173 = sp_str_alloc_raw(_cap173 + 1); char *_t174 = _t173; memcpy(_t174, "esp32_wifi_init failed: ", 24); _t174 += 24; _t174 = sp_w_int(_t174, _t172); *_t174 = 0; sp_str_set_len(_t173, (size_t)(_t174 - _t173)); (const char *)_t173; })); sp_puts_str_line(_ps); }
 #line 464 "app/wifi_status.rb"
-    { const char *_ps = (const char *)(((lv_rc == 0LL) ? ((char *)_fzl_30.d) : ({ sp_int _t199 = lv_rc; size_t _cap200 = 64UL; char *_t200 = sp_str_alloc_raw(_cap200 + 1); char *_t201 = _t200; memcpy(_t201, "mDNS: start failed (", 20); _t201 += 20; _t201 = sp_w_int(_t201, _t199); memcpy(_t201, ") -- serving on IP only", 23); _t201 += 23; *_t201 = 0; sp_str_set_len(_t200, (size_t)(_t201 - _t200)); (const char *)_t200; }))); sp_puts_str_line(_ps); }
+    sp_abort_raise(((char *)_fzl_25.d));
+#line 464 "app/wifi_status.rb"
+  }
+#line 466 "app/wifi_status.rb"
+  ((sp_int)(sp_ffi_f0_esp32_adc_init()));
 #line 467 "app/wifi_status.rb"
-    ((sp_int)(sp_ffi_f13_esp32_sntp_start()));
+  { const char *_ps = (const char *)(((char *)_fzl_26.d)); sp_puts_str_line(_ps); }
 #line 468 "app/wifi_status.rb"
-    { const char *_ps = (const char *)(((char *)_fzl_31.d)); sp_puts_str_line(_ps); }
-#line 468 "app/wifi_status.rb"
-  }
+  lv_n = ((sp_int)(sp_ffi_f6_esp32_wifi_scan()));
+#line 469 "app/wifi_status.rb"
+  { const char *_ps = (const char *)(({ sp_int _t177 = lv_n; size_t _cap178 = 41UL; char *_t178 = sp_str_alloc_raw(_cap178 + 1); char *_t179 = _t178; memcpy(_t179, "Scan found ", 11); _t179 += 11; _t179 = sp_w_int(_t179, _t177); memcpy(_t179, " networks", 9); _t179 += 9; *_t179 = 0; sp_str_set_len(_t178, (size_t)(_t179 - _t178)); (const char *)_t178; })); sp_puts_str_line(_ps); }
+#line 470 "app/wifi_status.rb"
+  ((sp_int)(sp_ffi_f5_esp32_wifi_connect()));
 #line 471 "app/wifi_status.rb"
-  lv_server = sp_io_fdopen_sock(sp_net_listen_host(((char *)_fzl_32.d), cst_PORT, 0), (&("\xff" "tcpserver")[1]));
+  { const char *_ps = (const char *)(({ const char *_t181 = sp_str_or_empty(cst_SSID); SP_GC_ROOT(_t181); size_t _l181 = sp_str_byte_len(_t181); size_t _cap182 = 18UL + _l181; char *_t182 = sp_str_alloc_raw(_cap182 + 1); char *_t183 = _t182; int _e184 = 0; memcpy(_t183, "Connecting to ", 14); _t183 += 14; _e184 = sp_str_enc_step_i(_e184, _t182, (size_t)(_t183 - _t182), _t181, _l181, sp_str_is_binary(_t181)); memcpy(_t183, _t181, _l181); _t183 += _l181; _e184 = sp_str_enc_step_i(_e184, _t182, (size_t)(_t183 - _t182), " ...", 4, 0); memcpy(_t183, " ...", 4); _t183 += 4; *_t183 = 0; sp_str_set_len(_t182, (size_t)(_t183 - _t182)); if (_e184 == 1) sp_str_mark_binary(_t182); (const char *)_t182; })); sp_puts_str_line(_ps); }
 #line 472 "app/wifi_status.rb"
-  { const char *_ps = (const char *)(({ sp_int _t204 = cst_PORT; size_t _cap205 = 74UL; char *_t205 = sp_str_alloc_raw(_cap205 + 1); char *_t206 = _t205; memcpy(_t206, "Serving status on 0.0.0.0:", 26); _t206 += 26; _t206 = sp_w_int(_t206, _t204); memcpy(_t206, " (polling loop, no threads)", 27); _t206 += 27; *_t206 = 0; sp_str_set_len(_t205, (size_t)(_t206 - _t205)); (const char *)_t205; })); sp_puts_str_line(_ps); }
+  _gcf.v[0] = sp_box_nil();
+#line 472 "app/wifi_status.rb"
+  int _brkexc187 = sp_exc_top, _brkcat187 = sp_catch_top, _brkslot187 = 0; (void)_brkexc187; (void)_brkcat187; (void)_brkslot187;
+#line 472 "app/wifi_status.rb"
+  int _t186 = sp_gc_nroots; (void)_t186;
+#line 472 "app/wifi_status.rb"
+  sp_RbVal _brkv187 = sp_box_nil(); (void)_brkv187; sp_int _brklt187 = 0; (void)_brklt187;
+#line 472 "app/wifi_status.rb"
+  {
+#line 472 "app/wifi_status.rb"
+    _gcf.v[0] = sp_box_int(({ for (sp_int _t188 = 0; _t188 < 30LL; _t188++) {
+#line 473 "app/wifi_status.rb"
+  ((sp_int)(({ int _b190_0 = ((int)(500LL)); int _b190_r; sp_native_enter(); _b190_r = sp_ffi_f10_esp32_delay_ms(_b190_0); sp_native_leave(); _b190_r; })));
 #line 474 "app/wifi_status.rb"
-  lv_led = 1LL;
-#line 475 "app/wifi_status.rb"
-  lv_loop_count = 0LL;
-#line 483 "app/wifi_status.rb"
-  lv_ota_state = sp_box_nil();
-#line 484 "app/wifi_status.rb"
-  lv_ota_valid_latch = 0;
-#line 486 "app/wifi_status.rb"
-#line 511 "app/wifi_status.rb"
-#line 543 "app/wifi_status.rb"
-#line 683 "app/wifi_status.rb"
-  int _gcb207 = sp_gc_nroots; (void)_gcb207;
-#line 683 "app/wifi_status.rb"
-  sp_exc_check_depth();
-#line 683 "app/wifi_status.rb"
-  sp_exc_msg[sp_exc_top] = 0; sp_exc_obj[sp_exc_top] = 0; sp_exc_top++;
-#line 683 "app/wifi_status.rb"
-  if (setjmp(sp_exc_stack[sp_exc_top-1]) == 0) {
-#line 683 "app/wifi_status.rb"
-    for (;;) {
-#line 683 "app/wifi_status.rb"
-      lv_client__bp1541 = sp_box_nil();
-#line 683 "app/wifi_status.rb"
-      lv_e__bp1541 = NULL;
-#line 683 "app/wifi_status.rb"
-      lv_req = NULL;
-#line 683 "app/wifi_status.rb"
-      lv_rssi__bp1541 = sp_oint_nil();
-#line 683 "app/wifi_status.rb"
-      lv_run_slot = 0;
-#line 683 "app/wifi_status.rb"
-      lv_slot_s__bp1541 = NULL;
-#line 683 "app/wifi_status.rb"
-      lv_chan__bp1541 = 0;
-#line 683 "app/wifi_status.rb"
-      lv_ssid__bp1541 = NULL;
-#line 683 "app/wifi_status.rb"
-      lv_path__bp1541 = NULL;
-#line 683 "app/wifi_status.rb"
-      lv_q = NULL;
-#line 683 "app/wifi_status.rb"
-      lv_murl = NULL;
-#line 683 "app/wifi_status.rb"
-      lv_url = NULL;
-#line 683 "app/wifi_status.rb"
-      lv_force__bp1541 = 0;
-#line 683 "app/wifi_status.rb"
-      lv_hostport = NULL;
-#line 683 "app/wifi_status.rb"
-      lv_upath = NULL;
-#line 683 "app/wifi_status.rb"
-      lv_colon = sp_oint_nil();
-#line 683 "app/wifi_status.rb"
-      lv_ohost = NULL;
-#line 683 "app/wifi_status.rb"
-      lv_oport = 0;
-#line 683 "app/wifi_status.rb"
-      lv_body = NULL;
-#line 683 "app/wifi_status.rb"
-      lv_slot = 0;
-#line 683 "app/wifi_status.rb"
-      lv_st = sp_box_nil();
-#line 683 "app/wifi_status.rb"
-      lv_mv = 0;
-#line 683 "app/wifi_status.rb"
-      lv_cell_v__bp1541 = 0.0;
-#line 683 "app/wifi_status.rb"
-      lv_time_s__bp1541 = NULL;
-#line 691 "app/wifi_status.rb"
-      lv_client__bp1541 = sp_box_nil();
-#line 692 "app/wifi_status.rb"
-      sp_exc_check_depth();
-#line 692 "app/wifi_status.rb"
-      sp_exc_rootmark[sp_exc_top] = sp_gc_nroots; sp_rescue_mark[sp_exc_top] = sp_rescue_sp;
-#line 692 "app/wifi_status.rb"
-      sp_exc_msg[sp_exc_top] = 0; sp_exc_obj[sp_exc_top] = 0; sp_exc_top++;
-#line 692 "app/wifi_status.rb"
-      if (setjmp(sp_exc_stack[sp_exc_top-1]) == 0) {
-#line 693 "app/wifi_status.rb"
-        lv_client__bp1541 = ({ sp_File *_t209 = sp_sock_accept_nb(lv_server, 0); _t209 ? sp_box_obj(_t209, SP_BUILTIN_IO) : sp_box_sym(sp_sym_intern("wait_readable")); });
-#line 693 "app/wifi_status.rb"
-        sp_exc_top--;
-#line 693 "app/wifi_status.rb"
-      }
-#line 693 "app/wifi_status.rb"
-      else {
-#line 693 "app/wifi_status.rb"
-        sp_exc_top--;
-#line 693 "app/wifi_status.rb"
-        sp_gc_nroots = sp_exc_rootmark[sp_exc_top]; sp_rescue_sp = sp_rescue_mark[sp_exc_top];
-#line 693 "app/wifi_status.rb"
-        if (sp_unwind_kind == SP_UNWIND_NONE) {
-#line 693 "app/wifi_status.rb"
-          if (strcmp((const char *)sp_last_exc_cls, "FiberKillSignal") == 0) sp_raise_cls("FiberKillSignal", sp_exc_msg[sp_exc_top]);
-#line 693 "app/wifi_status.rb"
-          else {
-#line 693 "app/wifi_status.rb"
-            const char *_rcls_210 = (const char *)sp_last_exc_cls; (void)_rcls_210;
-#line 693 "app/wifi_status.rb"
-            const char *_rmsg_210 = sp_exc_msg[sp_exc_top]; (void)_rmsg_210;
-#line 693 "app/wifi_status.rb"
-            if (sp_exc_is_standard_error(_rcls_210)) {
-#line 693 "app/wifi_status.rb"
-              sp_Exception *_ce_210 = sp_exc_obj[sp_exc_top] ? (sp_Exception *)sp_exc_obj[sp_exc_top] : sp_exc_new_for_catch(_rcls_210, _rmsg_210);
-#line 693 "app/wifi_status.rb"
-              sp_rescue_push((void *)_ce_210);
-#line 693 "app/wifi_status.rb"
-              if (_ce_210->backtrace == NULL) { sp_StrArray *_bt = sp_backtrace_captured(); sp_gc_wb((void *)_ce_210); _ce_210->backtrace = _bt; }
-#line 693 "app/wifi_status.rb"
-              if (!_ce_210->cause) { sp_gc_wb((void *)_ce_210); _ce_210->cause = (sp_Exception *)sp_pending_cause; } sp_pending_cause = NULL;
-#line 693 "app/wifi_status.rb"
-              lv_e__bp1541 = _ce_210;
-#line 695 "app/wifi_status.rb"
-              sp_Exception *_t212 = lv_e__bp1541;
-#line 695 "app/wifi_status.rb"
-              sp_Exception *_t214 = lv_e__bp1541;
-#line 695 "app/wifi_status.rb"
-              { const char *_ps = (const char *)(({ sp_int _t211 = lv_loop_count; const char *_t213 = sp_class_to_s(((sp_Class){0, _t212 ? sp_exc_class_name(_t212) : SPL("NilClass")})); SP_GC_ROOT(_t213); size_t _l213 = sp_str_byte_len(_t213); const char *_t215 = sp_str_or_empty((_t214 ? sp_exc_message(_t214) : sp_str_empty)); SP_GC_ROOT(_t215); size_t _l215 = sp_str_byte_len(_t215); size_t _cap216 = 39UL + _l213 + _l215; char *_t216 = sp_str_alloc_raw(_cap216 + 1); char *_t217 = _t216; int _e218 = 0; memcpy(_t217, "[", 1); _t217 += 1; _t217 = sp_w_int_plain(_t217, _t211); _e218 = sp_str_enc_step_i(_e218, _t216, (size_t)(_t217 - _t216), "] accept error: ", 16, 0); memcpy(_t217, "] accept error: ", 16); _t217 += 16; _e218 = sp_str_enc_step_i(_e218, _t216, (size_t)(_t217 - _t216), _t213, _l213, sp_str_is_binary(_t213)); memcpy(_t217, _t213, _l213); _t217 += _l213; _e218 = sp_str_enc_step_i(_e218, _t216, (size_t)(_t217 - _t216), " ", 1, 0); memcpy(_t217, " ", 1); _t217 += 1; _e218 = sp_str_enc_step_i(_e218, _t216, (size_t)(_t217 - _t216), _t215, _l215, sp_str_is_binary(_t215)); memcpy(_t217, _t215, _l215); _t217 += _l215; *_t217 = 0; sp_str_set_len(_t216, (size_t)(_t217 - _t216)); if (_e218 == 1) sp_str_mark_binary(_t216); (const char *)_t216; })); sp_puts_str_line(_ps); }
-#line 695 "app/wifi_status.rb"
-              sp_rescue_sp--;
-#line 695 "app/wifi_status.rb"
-            }
-#line 695 "app/wifi_status.rb"
-            else {
-#line 695 "app/wifi_status.rb"
-              sp_pending_exc_obj = sp_exc_obj[sp_exc_top]; sp_bt_keep = 1;
-#line 695 "app/wifi_status.rb"
-              sp_raise_cls(_rcls_210, _rmsg_210);
-#line 695 "app/wifi_status.rb"
-            }
-#line 695 "app/wifi_status.rb"
-          }
-#line 695 "app/wifi_status.rb"
-        }
-#line 695 "app/wifi_status.rb"
-        if (sp_unwind_kind != SP_UNWIND_NONE) sp_unwind_resume();
-#line 695 "app/wifi_status.rb"
-      }
-#line 697 "app/wifi_status.rb"
-      if ((sp_poly_truthy(lv_client__bp1541) && (!sp_poly_eq(lv_client__bp1541, sp_box_sym(((sp_sym)38)))))) {
-#line 702 "app/wifi_status.rb"
-        sp_exc_check_depth();
-#line 702 "app/wifi_status.rb"
-        sp_exc_rootmark[sp_exc_top] = sp_gc_nroots; sp_rescue_mark[sp_exc_top] = sp_rescue_sp;
-#line 702 "app/wifi_status.rb"
-        sp_exc_msg[sp_exc_top] = 0; sp_exc_obj[sp_exc_top] = 0; sp_exc_top++;
-#line 702 "app/wifi_status.rb"
-        if (setjmp(sp_exc_stack[sp_exc_top-1]) == 0) {
-#line 703 "app/wifi_status.rb"
-          lv_req = ((char *)_fzl_6.d);
-#line 705 "app/wifi_status.rb"
-          _gcf.v[1] = sp_box_nil();
-#line 705 "app/wifi_status.rb"
-          int _brkexc222 = sp_exc_top, _brkcat222 = sp_catch_top, _brkslot222 = 0; (void)_brkexc222; (void)_brkcat222; (void)_brkslot222;
-#line 705 "app/wifi_status.rb"
-          int _t221 = sp_gc_nroots; (void)_t221;
-#line 705 "app/wifi_status.rb"
-          sp_RbVal _brkv222 = sp_box_nil(); (void)_brkv222; sp_int _brklt222 = 0; (void)_brklt222;
-#line 705 "app/wifi_status.rb"
-          {
-#line 705 "app/wifi_status.rb"
-            _gcf.v[1] = sp_box_int(({ for (sp_int _t223 = 0; _t223 < 4LL; _t223++) {
-#line 705 "app/wifi_status.rb"
-  lv_chunk__bp1589 = sp_box_nil();
-#line 706 "app/wifi_status.rb"
-  lv_chunk__bp1589 = ({ sp_File *_t224 = sp_poly_as_io(lv_client__bp1541, "read_nonblock"); sp_bool _e226; const char *_t225 = sp_sock_read_nb(_t224, 512LL, 0, 0, &_e226); _t225 ? sp_box_str(_t225) : (_e226 ? sp_box_nil() : sp_box_sym(sp_sym_intern("wait_readable"))); });
-#line 707 "app/wifi_status.rb"
-  if (({ sp_RbVal _t227 = lv_chunk__bp1589; (_t227.tag == SP_TAG_STR || (_t227.tag == SP_TAG_OBJ && _t227.cls_id == SP_BUILTIN_STRBUF)); })) {
-#line 708 "app/wifi_status.rb"
-    lv_req = sp_str_concat(lv_req, sp_poly_unbox_s(lv_chunk__bp1589));
-#line 709 "app/wifi_status.rb"
-    if (sp_str_include(lv_req, ((char *)_fzl_7.d))) {
-#line 709 "app/wifi_status.rb"
-      _brkv222 = sp_box_nil(); goto _brklbl222;
-#line 709 "app/wifi_status.rb"
-    }
-#line 709 "app/wifi_status.rb"
+  if ((((sp_int)(sp_ffi_f7_esp32_wifi_connected())) != 0LL)) {
+#line 474 "app/wifi_status.rb"
+    _brkv187 = sp_box_nil(); goto _brklbl187;
+#line 474 "app/wifi_status.rb"
   }
-#line 709 "app/wifi_status.rb"
+#line 474 "app/wifi_status.rb"
 }
-#line 709 "app/wifi_status.rb"
-4LL; }));
-#line 709 "app/wifi_status.rb"
-            goto _brkend222;
-#line 709 "app/wifi_status.rb"
-          }
-#line 709 "app/wifi_status.rb"
-          _brklbl222: SP_UNUSED;
-#line 709 "app/wifi_status.rb"
-          sp_gc_nroots = _t221;
-#line 709 "app/wifi_status.rb"
-          _gcf.v[1] = _brkv222;
-#line 709 "app/wifi_status.rb"
-          _brkend222: SP_UNUSED;
-#line 709 "app/wifi_status.rb"
-          (void)_gcf.v[1];
+#line 474 "app/wifi_status.rb"
+30LL; }));
+#line 474 "app/wifi_status.rb"
+    goto _brkend187;
+#line 474 "app/wifi_status.rb"
+  }
+#line 474 "app/wifi_status.rb"
+  _brklbl187: SP_UNUSED;
+#line 474 "app/wifi_status.rb"
+  sp_gc_nroots = _t186;
+#line 474 "app/wifi_status.rb"
+  _gcf.v[0] = _brkv187;
+#line 474 "app/wifi_status.rb"
+  _brkend187: SP_UNUSED;
+#line 474 "app/wifi_status.rb"
+  (void)_gcf.v[0];
+#line 476 "app/wifi_status.rb"
+  if ((((sp_int)(sp_ffi_f7_esp32_wifi_connected())) == 0LL)) {
+#line 477 "app/wifi_status.rb"
+    { const char *_ps = (const char *)(((char *)_fzl_27.d)); sp_puts_str_line(_ps); }
+#line 477 "app/wifi_status.rb"
+  }
+#line 477 "app/wifi_status.rb"
+  else {
+#line 479 "app/wifi_status.rb"
+    ((sp_int)(sp_ffi_f9_esp32_wifi_ip(((void *)(uintptr_t)(lv_ip_buf)), ((int)(48LL)))));
+#line 480 "app/wifi_status.rb"
+    lv_ip = sp_str_strip(sp_str_delete(lv_ip_buf, ((char *)_fzl_17.d)));
+#line 481 "app/wifi_status.rb"
+    { const char *_ps = (const char *)(({ const char *_t194 = sp_str_or_empty(lv_ip); SP_GC_ROOT(_t194); size_t _l194 = sp_str_byte_len(_t194); size_t _cap195 = 20UL + _l194; char *_t195 = sp_str_alloc_raw(_cap195 + 1); char *_t196 = _t195; int _e197 = 0; memcpy(_t196, "WiFi: connected, IP ", 20); _t196 += 20; _e197 = sp_str_enc_step_i(_e197, _t195, (size_t)(_t196 - _t195), _t194, _l194, sp_str_is_binary(_t194)); memcpy(_t196, _t194, _l194); _t196 += _l194; *_t196 = 0; sp_str_set_len(_t195, (size_t)(_t196 - _t195)); if (_e197 == 1) sp_str_mark_binary(_t195); (const char *)_t195; })); sp_puts_str_line(_ps); }
+#line 483 "app/wifi_status.rb"
+    lv_rc = ((sp_int)(sp_ffi_f12_esp32_mdns_start(((char *)_fzl_28.d), ((char *)_fzl_29.d), lv_ip)));
+#line 484 "app/wifi_status.rb"
+    { const char *_ps = (const char *)(((lv_rc == 0LL) ? ((char *)_fzl_30.d) : ({ sp_int _t199 = lv_rc; size_t _cap200 = 64UL; char *_t200 = sp_str_alloc_raw(_cap200 + 1); char *_t201 = _t200; memcpy(_t201, "mDNS: start failed (", 20); _t201 += 20; _t201 = sp_w_int(_t201, _t199); memcpy(_t201, ") -- serving on IP only", 23); _t201 += 23; *_t201 = 0; sp_str_set_len(_t200, (size_t)(_t201 - _t200)); (const char *)_t200; }))); sp_puts_str_line(_ps); }
+#line 487 "app/wifi_status.rb"
+    ((sp_int)(sp_ffi_f13_esp32_sntp_start()));
+#line 488 "app/wifi_status.rb"
+    { const char *_ps = (const char *)(((char *)_fzl_31.d)); sp_puts_str_line(_ps); }
+#line 488 "app/wifi_status.rb"
+  }
+#line 491 "app/wifi_status.rb"
+  lv_server = sp_io_fdopen_sock(sp_net_listen_host(((char *)_fzl_32.d), cst_PORT, 0), (&("\xff" "tcpserver")[1]));
+#line 492 "app/wifi_status.rb"
+  { const char *_ps = (const char *)(({ sp_int _t204 = cst_PORT; size_t _cap205 = 74UL; char *_t205 = sp_str_alloc_raw(_cap205 + 1); char *_t206 = _t205; memcpy(_t206, "Serving status on 0.0.0.0:", 26); _t206 += 26; _t206 = sp_w_int(_t206, _t204); memcpy(_t206, " (polling loop, no threads)", 27); _t206 += 27; *_t206 = 0; sp_str_set_len(_t205, (size_t)(_t206 - _t205)); (const char *)_t205; })); sp_puts_str_line(_ps); }
+#line 494 "app/wifi_status.rb"
+  lv_led = 1LL;
+#line 495 "app/wifi_status.rb"
+  lv_loop_count = 0LL;
+#line 503 "app/wifi_status.rb"
+  lv_ota_state = sp_box_nil();
+#line 504 "app/wifi_status.rb"
+  lv_ota_valid_latch = 0;
+#line 506 "app/wifi_status.rb"
+#line 531 "app/wifi_status.rb"
+#line 563 "app/wifi_status.rb"
+#line 703 "app/wifi_status.rb"
+  int _gcb207 = sp_gc_nroots; (void)_gcb207;
+#line 703 "app/wifi_status.rb"
+  sp_exc_check_depth();
+#line 703 "app/wifi_status.rb"
+  sp_exc_msg[sp_exc_top] = 0; sp_exc_obj[sp_exc_top] = 0; sp_exc_top++;
+#line 703 "app/wifi_status.rb"
+  if (setjmp(sp_exc_stack[sp_exc_top-1]) == 0) {
+#line 703 "app/wifi_status.rb"
+    for (;;) {
+#line 703 "app/wifi_status.rb"
+      lv_client__bp1561 = sp_box_nil();
+#line 703 "app/wifi_status.rb"
+      lv_e__bp1561 = NULL;
+#line 703 "app/wifi_status.rb"
+      lv_req = NULL;
+#line 703 "app/wifi_status.rb"
+      lv_rssi__bp1561 = sp_oint_nil();
+#line 703 "app/wifi_status.rb"
+      lv_run_slot = 0;
+#line 703 "app/wifi_status.rb"
+      lv_slot_s__bp1561 = NULL;
+#line 703 "app/wifi_status.rb"
+      lv_chan__bp1561 = 0;
+#line 703 "app/wifi_status.rb"
+      lv_ssid__bp1561 = NULL;
+#line 703 "app/wifi_status.rb"
+      lv_path__bp1561 = NULL;
+#line 703 "app/wifi_status.rb"
+      lv_q = NULL;
+#line 703 "app/wifi_status.rb"
+      lv_murl = NULL;
+#line 703 "app/wifi_status.rb"
+      lv_url = NULL;
+#line 703 "app/wifi_status.rb"
+      lv_force__bp1561 = 0;
+#line 703 "app/wifi_status.rb"
+      lv_hostport = NULL;
+#line 703 "app/wifi_status.rb"
+      lv_upath = NULL;
+#line 703 "app/wifi_status.rb"
+      lv_colon = sp_oint_nil();
+#line 703 "app/wifi_status.rb"
+      lv_ohost = NULL;
+#line 703 "app/wifi_status.rb"
+      lv_oport = 0;
+#line 703 "app/wifi_status.rb"
+      lv_body = NULL;
+#line 703 "app/wifi_status.rb"
+      lv_slot = 0;
+#line 703 "app/wifi_status.rb"
+      lv_st = sp_box_nil();
+#line 703 "app/wifi_status.rb"
+      lv_mv = 0;
+#line 703 "app/wifi_status.rb"
+      lv_cell_v__bp1561 = 0.0;
+#line 703 "app/wifi_status.rb"
+      lv_time_s__bp1561 = NULL;
+#line 711 "app/wifi_status.rb"
+      lv_client__bp1561 = sp_box_nil();
 #line 712 "app/wifi_status.rb"
-          lv_rssi__bp1541 = sp_oint_of(((sp_int)(sp_ffi_f8_esp32_wifi_ap_info(((void *)(uintptr_t)(lv_ssid_buf)), ((int)(33LL)), ((void *)(uintptr_t)(lv_chan_buf))))));
+      sp_exc_check_depth();
+#line 712 "app/wifi_status.rb"
+      sp_exc_rootmark[sp_exc_top] = sp_gc_nroots; sp_rescue_mark[sp_exc_top] = sp_rescue_sp;
+#line 712 "app/wifi_status.rb"
+      sp_exc_msg[sp_exc_top] = 0; sp_exc_obj[sp_exc_top] = 0; sp_exc_top++;
+#line 712 "app/wifi_status.rb"
+      if (setjmp(sp_exc_stack[sp_exc_top-1]) == 0) {
 #line 713 "app/wifi_status.rb"
-          lv_run_slot = ((sp_int)(sp_ffi_f26_esp32_ota_running_slot()));
-#line 714 "app/wifi_status.rb"
-          lv_slot_s__bp1541 = ((lv_run_slot == 0LL) ? ((char *)_fzl_33.d) : ((lv_run_slot == 1LL) ? ((char *)_fzl_34.d) : ((char *)_fzl_35.d)));
-#line 715 "app/wifi_status.rb"
-          if (({ sp_oint _t230 = lv_rssi__bp1541; !_t230.nil && _t230.v == -999LL; })) {
-#line 716 "app/wifi_status.rb"
-            lv_rssi__bp1541 = sp_oint_nil();
-#line 717 "app/wifi_status.rb"
-            lv_chan__bp1541 = 0LL;
-#line 718 "app/wifi_status.rb"
-            lv_ssid__bp1541 = ((char *)_fzl_36.d);
-#line 719 "app/wifi_status.rb"
-            lv_ip = ((char *)_fzl_6.d);
-#line 719 "app/wifi_status.rb"
-          }
-#line 719 "app/wifi_status.rb"
+        lv_client__bp1561 = ({ sp_File *_t209 = sp_sock_accept_nb(lv_server, 0); _t209 ? sp_box_obj(_t209, SP_BUILTIN_IO) : sp_box_sym(sp_sym_intern("wait_readable")); });
+#line 713 "app/wifi_status.rb"
+        sp_exc_top--;
+#line 713 "app/wifi_status.rb"
+      }
+#line 713 "app/wifi_status.rb"
+      else {
+#line 713 "app/wifi_status.rb"
+        sp_exc_top--;
+#line 713 "app/wifi_status.rb"
+        sp_gc_nroots = sp_exc_rootmark[sp_exc_top]; sp_rescue_sp = sp_rescue_mark[sp_exc_top];
+#line 713 "app/wifi_status.rb"
+        if (sp_unwind_kind == SP_UNWIND_NONE) {
+#line 713 "app/wifi_status.rb"
+          if (strcmp((const char *)sp_last_exc_cls, "FiberKillSignal") == 0) sp_raise_cls("FiberKillSignal", sp_exc_msg[sp_exc_top]);
+#line 713 "app/wifi_status.rb"
           else {
-#line 721 "app/wifi_status.rb"
-            lv_ssid__bp1541 = sp_str_strip(sp_str_delete(lv_ssid_buf, ((char *)_fzl_17.d)));
-#line 722 "app/wifi_status.rb"
-            const char * _t232 = sp_str_sub_range(lv_chan_buf, 0LL, 4LL); SP_GC_ROOT(_t232);
-#line 722 "app/wifi_status.rb"
-            lv_chan__bp1541 = sp_rb_read_int_le(_t232);
-#line 723 "app/wifi_status.rb"
-            ((sp_int)(sp_ffi_f9_esp32_wifi_ip(((void *)(uintptr_t)(lv_ip_buf)), ((int)(48LL)))));
-#line 724 "app/wifi_status.rb"
-            lv_ip = sp_str_strip(sp_str_delete(lv_ip_buf, ((char *)_fzl_17.d)));
-#line 724 "app/wifi_status.rb"
-          }
-#line 728 "app/wifi_status.rb"
-          lv_path__bp1541 = ({ const char *_t234 = sp_StrArray_get(sp_str_split_ws(lv_req), 1LL); _t234 ? _t234 : sp_str_frozen_empty; });
-#line 740 "app/wifi_status.rb"
-          ((sp_int)(sp_ffi_f20_esp32_gc_step()));
-#line 743 "app/wifi_status.rb"
-          if (!(lv_ota_valid_latch)) {
-#line 744 "app/wifi_status.rb"
-            lv_ota_valid_latch = 1;
-#line 745 "app/wifi_status.rb"
-            sp_exc_check_depth();
-#line 745 "app/wifi_status.rb"
-            sp_exc_rootmark[sp_exc_top] = sp_gc_nroots; sp_rescue_mark[sp_exc_top] = sp_rescue_sp;
-#line 745 "app/wifi_status.rb"
-            sp_exc_msg[sp_exc_top] = 0; sp_exc_obj[sp_exc_top] = 0; sp_exc_top++;
-#line 745 "app/wifi_status.rb"
-            if (setjmp(sp_exc_stack[sp_exc_top-1]) == 0) {
-#line 746 "app/wifi_status.rb"
-              ((sp_int)(sp_ffi_f27_esp32_ota_mark_valid()));
-#line 746 "app/wifi_status.rb"
-              sp_exc_top--;
-#line 746 "app/wifi_status.rb"
+#line 713 "app/wifi_status.rb"
+            const char *_rcls_210 = (const char *)sp_last_exc_cls; (void)_rcls_210;
+#line 713 "app/wifi_status.rb"
+            const char *_rmsg_210 = sp_exc_msg[sp_exc_top]; (void)_rmsg_210;
+#line 713 "app/wifi_status.rb"
+            if (sp_exc_is_standard_error(_rcls_210)) {
+#line 713 "app/wifi_status.rb"
+              sp_Exception *_ce_210 = sp_exc_obj[sp_exc_top] ? (sp_Exception *)sp_exc_obj[sp_exc_top] : sp_exc_new_for_catch(_rcls_210, _rmsg_210);
+#line 713 "app/wifi_status.rb"
+              sp_rescue_push((void *)_ce_210);
+#line 713 "app/wifi_status.rb"
+              if (_ce_210->backtrace == NULL) { sp_StrArray *_bt = sp_backtrace_captured(); sp_gc_wb((void *)_ce_210); _ce_210->backtrace = _bt; }
+#line 713 "app/wifi_status.rb"
+              if (!_ce_210->cause) { sp_gc_wb((void *)_ce_210); _ce_210->cause = (sp_Exception *)sp_pending_cause; } sp_pending_cause = NULL;
+#line 713 "app/wifi_status.rb"
+              lv_e__bp1561 = _ce_210;
+#line 715 "app/wifi_status.rb"
+              sp_Exception *_t212 = lv_e__bp1561;
+#line 715 "app/wifi_status.rb"
+              sp_Exception *_t214 = lv_e__bp1561;
+#line 715 "app/wifi_status.rb"
+              { const char *_ps = (const char *)(({ sp_int _t211 = lv_loop_count; const char *_t213 = sp_class_to_s(((sp_Class){0, _t212 ? sp_exc_class_name(_t212) : SPL("NilClass")})); SP_GC_ROOT(_t213); size_t _l213 = sp_str_byte_len(_t213); const char *_t215 = sp_str_or_empty((_t214 ? sp_exc_message(_t214) : sp_str_empty)); SP_GC_ROOT(_t215); size_t _l215 = sp_str_byte_len(_t215); size_t _cap216 = 39UL + _l213 + _l215; char *_t216 = sp_str_alloc_raw(_cap216 + 1); char *_t217 = _t216; int _e218 = 0; memcpy(_t217, "[", 1); _t217 += 1; _t217 = sp_w_int_plain(_t217, _t211); _e218 = sp_str_enc_step_i(_e218, _t216, (size_t)(_t217 - _t216), "] accept error: ", 16, 0); memcpy(_t217, "] accept error: ", 16); _t217 += 16; _e218 = sp_str_enc_step_i(_e218, _t216, (size_t)(_t217 - _t216), _t213, _l213, sp_str_is_binary(_t213)); memcpy(_t217, _t213, _l213); _t217 += _l213; _e218 = sp_str_enc_step_i(_e218, _t216, (size_t)(_t217 - _t216), " ", 1, 0); memcpy(_t217, " ", 1); _t217 += 1; _e218 = sp_str_enc_step_i(_e218, _t216, (size_t)(_t217 - _t216), _t215, _l215, sp_str_is_binary(_t215)); memcpy(_t217, _t215, _l215); _t217 += _l215; *_t217 = 0; sp_str_set_len(_t216, (size_t)(_t217 - _t216)); if (_e218 == 1) sp_str_mark_binary(_t216); (const char *)_t216; })); sp_puts_str_line(_ps); }
+#line 715 "app/wifi_status.rb"
+              sp_rescue_sp--;
+#line 715 "app/wifi_status.rb"
             }
-#line 746 "app/wifi_status.rb"
+#line 715 "app/wifi_status.rb"
             else {
-#line 746 "app/wifi_status.rb"
-              sp_exc_top--;
-#line 746 "app/wifi_status.rb"
-              sp_gc_nroots = sp_exc_rootmark[sp_exc_top]; sp_rescue_sp = sp_rescue_mark[sp_exc_top];
-#line 746 "app/wifi_status.rb"
-              if (sp_unwind_kind == SP_UNWIND_NONE) {
-#line 746 "app/wifi_status.rb"
-                if (strcmp((const char *)sp_last_exc_cls, "FiberKillSignal") == 0) sp_raise_cls("FiberKillSignal", sp_exc_msg[sp_exc_top]);
-#line 746 "app/wifi_status.rb"
-                else {
-#line 746 "app/wifi_status.rb"
-                  const char *_rcls_238 = (const char *)sp_last_exc_cls; (void)_rcls_238;
-#line 746 "app/wifi_status.rb"
-                  const char *_rmsg_238 = sp_exc_msg[sp_exc_top]; (void)_rmsg_238;
-#line 746 "app/wifi_status.rb"
-                  if (sp_exc_is_standard_error(_rcls_238)) {
-#line 746 "app/wifi_status.rb"
-                    sp_Exception *_ce_238 = sp_exc_obj[sp_exc_top] ? (sp_Exception *)sp_exc_obj[sp_exc_top] : sp_exc_new_for_catch(_rcls_238, _rmsg_238);
-#line 746 "app/wifi_status.rb"
-                    sp_rescue_push((void *)_ce_238);
-#line 746 "app/wifi_status.rb"
-                    if (_ce_238->backtrace == NULL) { sp_StrArray *_bt = sp_backtrace_captured(); sp_gc_wb((void *)_ce_238); _ce_238->backtrace = _bt; }
-#line 746 "app/wifi_status.rb"
-                    if (!_ce_238->cause) { sp_gc_wb((void *)_ce_238); _ce_238->cause = (sp_Exception *)sp_pending_cause; } sp_pending_cause = NULL;
-#line 746 "app/wifi_status.rb"
-                    lv_e__bp1541 = _ce_238;
-#line 748 "app/wifi_status.rb"
-                    sp_Exception *_t240 = lv_e__bp1541;
-#line 748 "app/wifi_status.rb"
-                    sp_Exception *_t242 = lv_e__bp1541;
-#line 748 "app/wifi_status.rb"
-                    { const char *_ps = (const char *)(({ sp_int _t239 = lv_loop_count; const char *_t241 = sp_class_to_s(((sp_Class){0, _t240 ? sp_exc_class_name(_t240) : SPL("NilClass")})); SP_GC_ROOT(_t241); size_t _l241 = sp_str_byte_len(_t241); const char *_t243 = sp_str_or_empty((_t242 ? sp_exc_message(_t242) : sp_str_empty)); SP_GC_ROOT(_t243); size_t _l243 = sp_str_byte_len(_t243); size_t _cap244 = 47UL + _l241 + _l243; char *_t244 = sp_str_alloc_raw(_cap244 + 1); char *_t245 = _t244; int _e246 = 0; memcpy(_t245, "[", 1); _t245 += 1; _t245 = sp_w_int_plain(_t245, _t239); _e246 = sp_str_enc_step_i(_e246, _t244, (size_t)(_t245 - _t244), "] ota mark_valid error: ", 24, 0); memcpy(_t245, "] ota mark_valid error: ", 24); _t245 += 24; _e246 = sp_str_enc_step_i(_e246, _t244, (size_t)(_t245 - _t244), _t241, _l241, sp_str_is_binary(_t241)); memcpy(_t245, _t241, _l241); _t245 += _l241; _e246 = sp_str_enc_step_i(_e246, _t244, (size_t)(_t245 - _t244), " ", 1, 0); memcpy(_t245, " ", 1); _t245 += 1; _e246 = sp_str_enc_step_i(_e246, _t244, (size_t)(_t245 - _t244), _t243, _l243, sp_str_is_binary(_t243)); memcpy(_t245, _t243, _l243); _t245 += _l243; *_t245 = 0; sp_str_set_len(_t244, (size_t)(_t245 - _t244)); if (_e246 == 1) sp_str_mark_binary(_t244); (const char *)_t244; })); sp_puts_str_line(_ps); }
-#line 748 "app/wifi_status.rb"
-                    sp_rescue_sp--;
-#line 748 "app/wifi_status.rb"
-                  }
-#line 748 "app/wifi_status.rb"
-                  else {
-#line 748 "app/wifi_status.rb"
-                    sp_pending_exc_obj = sp_exc_obj[sp_exc_top]; sp_bt_keep = 1;
-#line 748 "app/wifi_status.rb"
-                    sp_raise_cls(_rcls_238, _rmsg_238);
-#line 748 "app/wifi_status.rb"
-                  }
-#line 748 "app/wifi_status.rb"
-                }
-#line 748 "app/wifi_status.rb"
-              }
-#line 748 "app/wifi_status.rb"
-              if (sp_unwind_kind != SP_UNWIND_NONE) sp_unwind_resume();
-#line 748 "app/wifi_status.rb"
+#line 715 "app/wifi_status.rb"
+              sp_pending_exc_obj = sp_exc_obj[sp_exc_top]; sp_bt_keep = 1;
+#line 715 "app/wifi_status.rb"
+              sp_raise_cls(_rcls_210, _rmsg_210);
+#line 715 "app/wifi_status.rb"
             }
-#line 748 "app/wifi_status.rb"
+#line 715 "app/wifi_status.rb"
           }
-#line 752 "app/wifi_status.rb"
-          if (sp_str_start_with(lv_path__bp1541, ((char *)_fzl_37.d))) {
-#line 758 "app/wifi_status.rb"
-            lv_q = ({ const char *_t247 = sp_StrArray_get(sp_str_split_limit(lv_path__bp1541, ((char *)_fzl_2.d), 2LL), 1LL); _t247 ? _t247 : sp_str_frozen_empty; });
-#line 759 "app/wifi_status.rb"
-            lv_murl = (sp_poly_truthy(sp_re_match_poly(sp_re_pat_1, lv_q)) ? sp_re_captures[1] : (0, NULL));
+#line 715 "app/wifi_status.rb"
+        }
+#line 715 "app/wifi_status.rb"
+        if (sp_unwind_kind != SP_UNWIND_NONE) sp_unwind_resume();
+#line 715 "app/wifi_status.rb"
+      }
+#line 717 "app/wifi_status.rb"
+      if ((sp_poly_truthy(lv_client__bp1561) && (!sp_poly_eq(lv_client__bp1561, sp_box_sym(((sp_sym)38)))))) {
+#line 722 "app/wifi_status.rb"
+        sp_exc_check_depth();
+#line 722 "app/wifi_status.rb"
+        sp_exc_rootmark[sp_exc_top] = sp_gc_nroots; sp_rescue_mark[sp_exc_top] = sp_rescue_sp;
+#line 722 "app/wifi_status.rb"
+        sp_exc_msg[sp_exc_top] = 0; sp_exc_obj[sp_exc_top] = 0; sp_exc_top++;
+#line 722 "app/wifi_status.rb"
+        if (setjmp(sp_exc_stack[sp_exc_top-1]) == 0) {
+#line 723 "app/wifi_status.rb"
+          lv_req = ((char *)_fzl_6.d);
+#line 725 "app/wifi_status.rb"
+          _gcf.v[1] = sp_box_nil();
+#line 725 "app/wifi_status.rb"
+          int _brkexc222 = sp_exc_top, _brkcat222 = sp_catch_top, _brkslot222 = 0; (void)_brkexc222; (void)_brkcat222; (void)_brkslot222;
+#line 725 "app/wifi_status.rb"
+          int _t221 = sp_gc_nroots; (void)_t221;
+#line 725 "app/wifi_status.rb"
+          sp_RbVal _brkv222 = sp_box_nil(); (void)_brkv222; sp_int _brklt222 = 0; (void)_brklt222;
+#line 725 "app/wifi_status.rb"
+          {
+#line 725 "app/wifi_status.rb"
+            _gcf.v[1] = sp_box_int(({ for (sp_int _t223 = 0; _t223 < 4LL; _t223++) {
+#line 725 "app/wifi_status.rb"
+  lv_chunk__bp1609 = sp_box_nil();
+#line 726 "app/wifi_status.rb"
+  lv_chunk__bp1609 = ({ sp_File *_t224 = sp_poly_as_io(lv_client__bp1561, "read_nonblock"); sp_bool _e226; const char *_t225 = sp_sock_read_nb(_t224, 512LL, 0, 0, &_e226); _t225 ? sp_box_str(_t225) : (_e226 ? sp_box_nil() : sp_box_sym(sp_sym_intern("wait_readable"))); });
+#line 727 "app/wifi_status.rb"
+  if (({ sp_RbVal _t227 = lv_chunk__bp1609; (_t227.tag == SP_TAG_STR || (_t227.tag == SP_TAG_OBJ && _t227.cls_id == SP_BUILTIN_STRBUF)); })) {
+#line 728 "app/wifi_status.rb"
+    lv_req = sp_str_concat(lv_req, sp_poly_unbox_s(lv_chunk__bp1609));
+#line 729 "app/wifi_status.rb"
+    if (sp_str_include(lv_req, ((char *)_fzl_7.d))) {
+#line 729 "app/wifi_status.rb"
+      _brkv222 = sp_box_nil(); goto _brklbl222;
+#line 729 "app/wifi_status.rb"
+    }
+#line 729 "app/wifi_status.rb"
+  }
+#line 729 "app/wifi_status.rb"
+}
+#line 729 "app/wifi_status.rb"
+4LL; }));
+#line 729 "app/wifi_status.rb"
+            goto _brkend222;
+#line 729 "app/wifi_status.rb"
+          }
+#line 729 "app/wifi_status.rb"
+          _brklbl222: SP_UNUSED;
+#line 729 "app/wifi_status.rb"
+          sp_gc_nroots = _t221;
+#line 729 "app/wifi_status.rb"
+          _gcf.v[1] = _brkv222;
+#line 729 "app/wifi_status.rb"
+          _brkend222: SP_UNUSED;
+#line 729 "app/wifi_status.rb"
+          (void)_gcf.v[1];
+#line 732 "app/wifi_status.rb"
+          lv_rssi__bp1561 = sp_oint_of(((sp_int)(sp_ffi_f8_esp32_wifi_ap_info(((void *)(uintptr_t)(lv_ssid_buf)), ((int)(33LL)), ((void *)(uintptr_t)(lv_chan_buf))))));
+#line 733 "app/wifi_status.rb"
+          lv_run_slot = ((sp_int)(sp_ffi_f26_esp32_ota_running_slot()));
+#line 734 "app/wifi_status.rb"
+          lv_slot_s__bp1561 = ((lv_run_slot == 0LL) ? ((char *)_fzl_33.d) : ((lv_run_slot == 1LL) ? ((char *)_fzl_34.d) : ((char *)_fzl_35.d)));
+#line 735 "app/wifi_status.rb"
+          if (({ sp_oint _t230 = lv_rssi__bp1561; !_t230.nil && _t230.v == -999LL; })) {
+#line 736 "app/wifi_status.rb"
+            lv_rssi__bp1561 = sp_oint_nil();
+#line 737 "app/wifi_status.rb"
+            lv_chan__bp1561 = 0LL;
+#line 738 "app/wifi_status.rb"
+            lv_ssid__bp1561 = ((char *)_fzl_36.d);
+#line 739 "app/wifi_status.rb"
+            lv_ip = ((char *)_fzl_6.d);
+#line 739 "app/wifi_status.rb"
+          }
+#line 739 "app/wifi_status.rb"
+          else {
+#line 741 "app/wifi_status.rb"
+            lv_ssid__bp1561 = sp_str_strip(sp_str_delete(lv_ssid_buf, ((char *)_fzl_17.d)));
+#line 742 "app/wifi_status.rb"
+            const char * _t232 = sp_str_sub_range(lv_chan_buf, 0LL, 4LL); SP_GC_ROOT(_t232);
+#line 742 "app/wifi_status.rb"
+            lv_chan__bp1561 = sp_rb_read_int_le(_t232);
+#line 743 "app/wifi_status.rb"
+            ((sp_int)(sp_ffi_f9_esp32_wifi_ip(((void *)(uintptr_t)(lv_ip_buf)), ((int)(48LL)))));
+#line 744 "app/wifi_status.rb"
+            lv_ip = sp_str_strip(sp_str_delete(lv_ip_buf, ((char *)_fzl_17.d)));
+#line 744 "app/wifi_status.rb"
+          }
+#line 748 "app/wifi_status.rb"
+          lv_path__bp1561 = ({ const char *_t234 = sp_StrArray_get(sp_str_split_ws(lv_req), 1LL); _t234 ? _t234 : sp_str_frozen_empty; });
 #line 760 "app/wifi_status.rb"
-            lv_url = ({ const char *_t248 = lv_murl; _t248 ? _t248 : sp_str_frozen_empty; });
-#line 761 "app/wifi_status.rb"
-            lv_force__bp1541 = sp_str_include(lv_q, ((char *)_fzl_38.d));
-#line 762 "app/wifi_status.rb"
-            { const char *_ps = (const char *)(({ sp_int _t249 = lv_loop_count; const char *_t250 = sp_str_or_empty(lv_url); SP_GC_ROOT(_t250); size_t _l250 = sp_str_byte_len(_t250); size_t _cap251 = 35UL + _l250; char *_t251 = sp_str_alloc_raw(_cap251 + 1); char *_t252 = _t251; int _e253 = 0; memcpy(_t252, "[", 1); _t252 += 1; _t252 = sp_w_int_plain(_t252, _t249); _e253 = sp_str_enc_step_i(_e253, _t251, (size_t)(_t252 - _t251), "] OTA start: ", 13, 0); memcpy(_t252, "] OTA start: ", 13); _t252 += 13; _e253 = sp_str_enc_step_i(_e253, _t251, (size_t)(_t252 - _t251), _t250, _l250, sp_str_is_binary(_t250)); memcpy(_t252, _t250, _l250); _t252 += _l250; *_t252 = 0; sp_str_set_len(_t251, (size_t)(_t252 - _t251)); if (_e253 == 1) sp_str_mark_binary(_t251); (const char *)_t251; })); sp_puts_str_line(_ps); }
+          ((sp_int)(sp_ffi_f20_esp32_gc_step()));
 #line 763 "app/wifi_status.rb"
-            if (sp_str_empty_p(lv_url)) {
+          if (!(lv_ota_valid_latch)) {
 #line 764 "app/wifi_status.rb"
-              sp_ota_error(lv_client__bp1541, 400LL, ((char *)_fzl_39.d));
-#line 764 "app/wifi_status.rb"
+            lv_ota_valid_latch = 1;
+#line 765 "app/wifi_status.rb"
+            sp_exc_check_depth();
+#line 765 "app/wifi_status.rb"
+            sp_exc_rootmark[sp_exc_top] = sp_gc_nroots; sp_rescue_mark[sp_exc_top] = sp_rescue_sp;
+#line 765 "app/wifi_status.rb"
+            sp_exc_msg[sp_exc_top] = 0; sp_exc_obj[sp_exc_top] = 0; sp_exc_top++;
+#line 765 "app/wifi_status.rb"
+            if (setjmp(sp_exc_stack[sp_exc_top-1]) == 0) {
+#line 766 "app/wifi_status.rb"
+              ((sp_int)(sp_ffi_f27_esp32_ota_mark_valid()));
+#line 766 "app/wifi_status.rb"
+              sp_exc_top--;
+#line 766 "app/wifi_status.rb"
             }
-#line 764 "app/wifi_status.rb"
+#line 766 "app/wifi_status.rb"
             else {
 #line 766 "app/wifi_status.rb"
-              lv_hostport = ({ const char *_t254 = sp_StrArray_get(sp_str_split_limit(lv_url, ((char *)_fzl_40.d), 2LL), 0LL); _t254 ? _t254 : sp_str_frozen_empty; });
-#line 767 "app/wifi_status.rb"
-              lv_upath = ({ const char *_t255 = ((char *)_fzl_40.d); SP_GC_ROOT(_t255); const char *_t256 = (({ const char *_t257 = sp_StrArray_get(sp_str_split_limit(lv_url, ((char *)_fzl_40.d), 2LL), 1LL); _t257 ? _t257 : sp_str_frozen_empty; })); SP_GC_ROOT(_t256); sp_str_plus(_t255, _t256); });
+              sp_exc_top--;
+#line 766 "app/wifi_status.rb"
+              sp_gc_nroots = sp_exc_rootmark[sp_exc_top]; sp_rescue_sp = sp_rescue_mark[sp_exc_top];
+#line 766 "app/wifi_status.rb"
+              if (sp_unwind_kind == SP_UNWIND_NONE) {
+#line 766 "app/wifi_status.rb"
+                if (strcmp((const char *)sp_last_exc_cls, "FiberKillSignal") == 0) sp_raise_cls("FiberKillSignal", sp_exc_msg[sp_exc_top]);
+#line 766 "app/wifi_status.rb"
+                else {
+#line 766 "app/wifi_status.rb"
+                  const char *_rcls_238 = (const char *)sp_last_exc_cls; (void)_rcls_238;
+#line 766 "app/wifi_status.rb"
+                  const char *_rmsg_238 = sp_exc_msg[sp_exc_top]; (void)_rmsg_238;
+#line 766 "app/wifi_status.rb"
+                  if (sp_exc_is_standard_error(_rcls_238)) {
+#line 766 "app/wifi_status.rb"
+                    sp_Exception *_ce_238 = sp_exc_obj[sp_exc_top] ? (sp_Exception *)sp_exc_obj[sp_exc_top] : sp_exc_new_for_catch(_rcls_238, _rmsg_238);
+#line 766 "app/wifi_status.rb"
+                    sp_rescue_push((void *)_ce_238);
+#line 766 "app/wifi_status.rb"
+                    if (_ce_238->backtrace == NULL) { sp_StrArray *_bt = sp_backtrace_captured(); sp_gc_wb((void *)_ce_238); _ce_238->backtrace = _bt; }
+#line 766 "app/wifi_status.rb"
+                    if (!_ce_238->cause) { sp_gc_wb((void *)_ce_238); _ce_238->cause = (sp_Exception *)sp_pending_cause; } sp_pending_cause = NULL;
+#line 766 "app/wifi_status.rb"
+                    lv_e__bp1561 = _ce_238;
 #line 768 "app/wifi_status.rb"
-              lv_colon = sp_str_rindex_opt(lv_hostport, ((char *)_fzl_41.d));
-#line 769 "app/wifi_status.rb"
-              lv_ohost = ((!(lv_colon).nil) ? sp_str_sub_range(lv_hostport, 0LL, sp_oint_arg(lv_colon)) : lv_hostport);
-#line 770 "app/wifi_status.rb"
-              lv_oport = ((!(lv_colon).nil) ? sp_str_to_i_cruby(sp_str_sub_range(lv_hostport, sp_int_add(lv_colon.v, 1LL), sp_str_length_m(lv_hostport))) : 80LL);
-#line 771 "app/wifi_status.rb"
-              if ((lv_oport == 0LL)) {
-#line 771 "app/wifi_status.rb"
-                lv_oport = 80LL;
-#line 771 "app/wifi_status.rb"
+                    sp_Exception *_t240 = lv_e__bp1561;
+#line 768 "app/wifi_status.rb"
+                    sp_Exception *_t242 = lv_e__bp1561;
+#line 768 "app/wifi_status.rb"
+                    { const char *_ps = (const char *)(({ sp_int _t239 = lv_loop_count; const char *_t241 = sp_class_to_s(((sp_Class){0, _t240 ? sp_exc_class_name(_t240) : SPL("NilClass")})); SP_GC_ROOT(_t241); size_t _l241 = sp_str_byte_len(_t241); const char *_t243 = sp_str_or_empty((_t242 ? sp_exc_message(_t242) : sp_str_empty)); SP_GC_ROOT(_t243); size_t _l243 = sp_str_byte_len(_t243); size_t _cap244 = 47UL + _l241 + _l243; char *_t244 = sp_str_alloc_raw(_cap244 + 1); char *_t245 = _t244; int _e246 = 0; memcpy(_t245, "[", 1); _t245 += 1; _t245 = sp_w_int_plain(_t245, _t239); _e246 = sp_str_enc_step_i(_e246, _t244, (size_t)(_t245 - _t244), "] ota mark_valid error: ", 24, 0); memcpy(_t245, "] ota mark_valid error: ", 24); _t245 += 24; _e246 = sp_str_enc_step_i(_e246, _t244, (size_t)(_t245 - _t244), _t241, _l241, sp_str_is_binary(_t241)); memcpy(_t245, _t241, _l241); _t245 += _l241; _e246 = sp_str_enc_step_i(_e246, _t244, (size_t)(_t245 - _t244), " ", 1, 0); memcpy(_t245, " ", 1); _t245 += 1; _e246 = sp_str_enc_step_i(_e246, _t244, (size_t)(_t245 - _t244), _t243, _l243, sp_str_is_binary(_t243)); memcpy(_t245, _t243, _l243); _t245 += _l243; *_t245 = 0; sp_str_set_len(_t244, (size_t)(_t245 - _t244)); if (_e246 == 1) sp_str_mark_binary(_t244); (const char *)_t244; })); sp_puts_str_line(_ps); }
+#line 768 "app/wifi_status.rb"
+                    sp_rescue_sp--;
+#line 768 "app/wifi_status.rb"
+                  }
+#line 768 "app/wifi_status.rb"
+                  else {
+#line 768 "app/wifi_status.rb"
+                    sp_pending_exc_obj = sp_exc_obj[sp_exc_top]; sp_bt_keep = 1;
+#line 768 "app/wifi_status.rb"
+                    sp_raise_cls(_rcls_238, _rmsg_238);
+#line 768 "app/wifi_status.rb"
+                  }
+#line 768 "app/wifi_status.rb"
+                }
+#line 768 "app/wifi_status.rb"
               }
-#line 774 "app/wifi_status.rb"
-              { const char *_ps = (const char *)(({ sp_int _t258 = lv_loop_count; const char *_t259 = sp_str_or_empty(lv_ohost); SP_GC_ROOT(_t259); size_t _l259 = sp_str_byte_len(_t259); sp_int _t260 = lv_oport; const char *_t261 = sp_str_or_empty(lv_upath); SP_GC_ROOT(_t261); size_t _l261 = sp_str_byte_len(_t261); size_t _cap262 = 62UL + _l259 + _l261; char *_t262 = sp_str_alloc_raw(_cap262 + 1); char *_t263 = _t262; int _e264 = 0; memcpy(_t263, "[", 1); _t263 += 1; _t263 = sp_w_int_plain(_t263, _t258); _e264 = sp_str_enc_step_i(_e264, _t262, (size_t)(_t263 - _t262), "] OTA connecting ", 17, 0); memcpy(_t263, "] OTA connecting ", 17); _t263 += 17; _e264 = sp_str_enc_step_i(_e264, _t262, (size_t)(_t263 - _t262), _t259, _l259, sp_str_is_binary(_t259)); memcpy(_t263, _t259, _l259); _t263 += _l259; _e264 = sp_str_enc_step_i(_e264, _t262, (size_t)(_t263 - _t262), ":", 1, 0); memcpy(_t263, ":", 1); _t263 += 1; _t263 = sp_w_int(_t263, _t260); _e264 = sp_str_enc_step_i(_e264, _t262, (size_t)(_t263 - _t262), " ", 1, 0); memcpy(_t263, " ", 1); _t263 += 1; _e264 = sp_str_enc_step_i(_e264, _t262, (size_t)(_t263 - _t262), _t261, _l261, sp_str_is_binary(_t261)); memcpy(_t263, _t261, _l261); _t263 += _l261; *_t263 = 0; sp_str_set_len(_t262, (size_t)(_t263 - _t262)); if (_e264 == 1) sp_str_mark_binary(_t262); (const char *)_t262; })); sp_puts_str_line(_ps); }
-#line 775 "app/wifi_status.rb"
-              lv_ota_state = sp_box_nullable_obj((void *)(sp_ota_download(lv_ohost, lv_oport, lv_upath, lv_force__bp1541)), SP_BUILTIN_STR_POLY_HASH);
-#line 776 "app/wifi_status.rb"
-              { const char *_ps = (const char *)(({ sp_int _t265 = lv_loop_count; int _t266 = 0; const char *_t268 = ({ sp_RbVal _t267 = sp_poly_get_str(lv_ota_state, ((char *)_fzl_3.d)); _t266 = !(sp_poly_is_strbuf(_t267) || _t267.tag == SP_TAG_STR); sp_poly_to_s(_t267); }); SP_GC_ROOT(_t268); size_t _l268 = sp_str_byte_len(_t268); int _t269 = 0; const char *_t271 = ({ sp_RbVal _t270 = sp_poly_get_str(lv_ota_state, ((char *)_fzl_4.d)); _t269 = !(sp_poly_is_strbuf(_t270) || _t270.tag == SP_TAG_STR); sp_poly_to_s(_t270); }); SP_GC_ROOT(_t271); size_t _l271 = sp_str_byte_len(_t271); int _t272 = 0; const char *_t274 = ({ sp_RbVal _t273 = sp_poly_get_str(lv_ota_state, ((char *)_fzl_19.d)); _t272 = !(sp_poly_is_strbuf(_t273) || _t273.tag == SP_TAG_STR); sp_poly_to_s(_t273); }); SP_GC_ROOT(_t274); size_t _l274 = sp_str_byte_len(_t274); size_t _cap275 = 39UL + _l268 + _l271 + _l274; char *_t275 = sp_str_alloc_raw(_cap275 + 1); char *_t276 = _t275; int _e277 = 0; memcpy(_t276, "[", 1); _t276 += 1; _t276 = sp_w_int_plain(_t276, _t265); _e277 = sp_str_enc_step_i(_e277, _t275, (size_t)(_t276 - _t275), "] OTA result: ", 14, 0); memcpy(_t276, "] OTA result: ", 14); _t276 += 14; if (!_t266) _e277 = sp_str_enc_step_i(_e277, _t275, (size_t)(_t276 - _t275), _t268, _l268, sp_str_is_binary(_t268)); memcpy(_t276, _t268, _l268); _t276 += _l268; _e277 = sp_str_enc_step_i(_e277, _t275, (size_t)(_t276 - _t275), " ", 1, 0); memcpy(_t276, " ", 1); _t276 += 1; if (!_t269) _e277 = sp_str_enc_step_i(_e277, _t275, (size_t)(_t276 - _t275), _t271, _l271, sp_str_is_binary(_t271)); memcpy(_t276, _t271, _l271); _t276 += _l271; _e277 = sp_str_enc_step_i(_e277, _t275, (size_t)(_t276 - _t275), "B ", 2, 0); memcpy(_t276, "B ", 2); _t276 += 2; if (!_t272) _e277 = sp_str_enc_step_i(_e277, _t275, (size_t)(_t276 - _t275), _t274, _l274, sp_str_is_binary(_t274)); memcpy(_t276, _t274, _l274); _t276 += _l274; *_t276 = 0; sp_str_set_len(_t275, (size_t)(_t276 - _t275)); if (_e277 == 1) sp_str_mark_binary(_t275); (const char *)_t275; })); sp_puts_str_line(_ps); }
+#line 768 "app/wifi_status.rb"
+              if (sp_unwind_kind != SP_UNWIND_NONE) sp_unwind_resume();
+#line 768 "app/wifi_status.rb"
+            }
+#line 768 "app/wifi_status.rb"
+          }
+#line 772 "app/wifi_status.rb"
+          if (sp_str_start_with(lv_path__bp1561, ((char *)_fzl_37.d))) {
 #line 778 "app/wifi_status.rb"
-              lv_body = ({ int _t278 = 0; const char *_t280 = ({ sp_RbVal _t279 = sp_poly_get_str(lv_ota_state, ((char *)_fzl_3.d)); _t278 = !(sp_poly_is_strbuf(_t279) || _t279.tag == SP_TAG_STR); sp_poly_to_s(_t279); }); SP_GC_ROOT(_t280); size_t _l280 = sp_str_byte_len(_t280); int _t281 = 0; const char *_t283 = ({ sp_RbVal _t282 = sp_poly_get_str(lv_ota_state, ((char *)_fzl_4.d)); _t281 = !(sp_poly_is_strbuf(_t282) || _t282.tag == SP_TAG_STR); sp_poly_to_s(_t282); }); SP_GC_ROOT(_t283); size_t _l283 = sp_str_byte_len(_t283); const char *_t296 = sp_str_or_empty((sp_poly_truthy(sp_poly_get_str(lv_ota_state, ((char *)_fzl_19.d))) ? ({ int _t284 = 0; const char *_t286 = ({ sp_RbVal _t285 = sp_poly_get_str(lv_ota_state, ((char *)_fzl_19.d)); _t284 = !(sp_poly_is_strbuf(_t285) || _t285.tag == SP_TAG_STR); sp_poly_to_s(_t285); }); SP_GC_ROOT(_t286); size_t _l286 = sp_str_byte_len(_t286); size_t _cap287 = 6UL + _l286; char *_t287 = sp_str_alloc_raw(_cap287 + 1); char *_t288 = _t287; int _e289 = 0; memcpy(_t288, "error=", 6); _t288 += 6; if (!_t284) _e289 = sp_str_enc_step_i(_e289, _t287, (size_t)(_t288 - _t287), _t286, _l286, sp_str_is_binary(_t286)); memcpy(_t288, _t286, _l286); _t288 += _l286; *_t288 = 0; sp_str_set_len(_t287, (size_t)(_t288 - _t287)); if (_e289 == 1) sp_str_mark_binary(_t287); (const char *)_t287; }) : ({ int _t290 = 0; const char *_t292 = ({ sp_RbVal _t291 = sp_poly_get_str(lv_ota_state, ((char *)_fzl_16.d)); _t290 = !(sp_poly_is_strbuf(_t291) || _t291.tag == SP_TAG_STR); sp_poly_to_s(_t291); }); SP_GC_ROOT(_t292); size_t _l292 = sp_str_byte_len(_t292); size_t _cap293 = 5UL + _l292; char *_t293 = sp_str_alloc_raw(_cap293 + 1); char *_t294 = _t293; int _e295 = 0; memcpy(_t294, "slot=", 5); _t294 += 5; if (!_t290) _e295 = sp_str_enc_step_i(_e295, _t293, (size_t)(_t294 - _t293), _t292, _l292, sp_str_is_binary(_t292)); memcpy(_t294, _t292, _l292); _t294 += _l292; *_t294 = 0; sp_str_set_len(_t293, (size_t)(_t294 - _t293)); if (_e295 == 1) sp_str_mark_binary(_t293); (const char *)_t293; }))); SP_GC_ROOT(_t296); size_t _l296 = sp_str_byte_len(_t296); size_t _cap297 = 14UL + _l280 + _l283 + _l296; char *_t297 = sp_str_alloc_raw(_cap297 + 1); char *_t298 = _t297; int _e299 = 0; memcpy(_t298, "OTA ", 4); _t298 += 4; if (!_t278) _e299 = sp_str_enc_step_i(_e299, _t297, (size_t)(_t298 - _t297), _t280, _l280, sp_str_is_binary(_t280)); memcpy(_t298, _t280, _l280); _t298 += _l280; _e299 = sp_str_enc_step_i(_e299, _t297, (size_t)(_t298 - _t297), ": ", 2, 0); memcpy(_t298, ": ", 2); _t298 += 2; if (!_t281) _e299 = sp_str_enc_step_i(_e299, _t297, (size_t)(_t298 - _t297), _t283, _l283, sp_str_is_binary(_t283)); memcpy(_t298, _t283, _l283); _t298 += _l283; _e299 = sp_str_enc_step_i(_e299, _t297, (size_t)(_t298 - _t297), " bytes ", 7, 0); memcpy(_t298, " bytes ", 7); _t298 += 7; _e299 = sp_str_enc_step_i(_e299, _t297, (size_t)(_t298 - _t297), _t296, _l296, sp_str_is_binary(_t296)); memcpy(_t298, _t296, _l296); _t298 += _l296; _e299 = sp_str_enc_step_i(_e299, _t297, (size_t)(_t298 - _t297), "\n", 1, 0); memcpy(_t298, "\n", 1); _t298 += 1; *_t298 = 0; sp_str_set_len(_t297, (size_t)(_t298 - _t297)); if (_e299 == 1) sp_str_mark_binary(_t297); (const char *)_t297; });
+            lv_q = ({ const char *_t247 = sp_StrArray_get(sp_str_split_limit(lv_path__bp1561, ((char *)_fzl_2.d), 2LL), 1LL); _t247 ? _t247 : sp_str_frozen_empty; });
+#line 779 "app/wifi_status.rb"
+            lv_murl = (sp_poly_truthy(sp_re_match_poly(sp_re_pat_1, lv_q)) ? sp_re_captures[1] : (0, NULL));
 #line 780 "app/wifi_status.rb"
-              const char * _t303 = ({ sp_int _t300 = sp_str_bytesize_m(lv_body); size_t _cap301 = 103UL; char *_t301 = sp_str_alloc_raw(_cap301 + 1); char *_t302 = _t301; memcpy(_t302, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n", 43); _t302 += 43; memcpy(_t302, "Content-Length: ", 16); _t302 += 16; _t302 = sp_w_int_plain(_t302, _t300); memcpy(_t302, "\r\nConnection: close\r\n\r\n", 23); _t302 += 23; *_t302 = 0; sp_str_set_len(_t301, (size_t)(_t302 - _t301)); (const char *)_t301; }); SP_GC_ROOT(_t303);
-#line 780 "app/wifi_status.rb"
-              ({ sp_File *_t304 = sp_poly_as_io(lv_client__bp1541, "write"); sp_File_write_bin(_t304, _t303); });
+            lv_url = ({ const char *_t248 = lv_murl; _t248 ? _t248 : sp_str_frozen_empty; });
+#line 781 "app/wifi_status.rb"
+            lv_force__bp1561 = sp_str_include(lv_q, ((char *)_fzl_38.d));
 #line 782 "app/wifi_status.rb"
-              ({ sp_File *_t305 = sp_poly_as_io(lv_client__bp1541, "write"); sp_File_write_bin(_t305, lv_body); });
+            { const char *_ps = (const char *)(({ sp_int _t249 = lv_loop_count; const char *_t250 = sp_str_or_empty(lv_url); SP_GC_ROOT(_t250); size_t _l250 = sp_str_byte_len(_t250); size_t _cap251 = 35UL + _l250; char *_t251 = sp_str_alloc_raw(_cap251 + 1); char *_t252 = _t251; int _e253 = 0; memcpy(_t252, "[", 1); _t252 += 1; _t252 = sp_w_int_plain(_t252, _t249); _e253 = sp_str_enc_step_i(_e253, _t251, (size_t)(_t252 - _t251), "] OTA start: ", 13, 0); memcpy(_t252, "] OTA start: ", 13); _t252 += 13; _e253 = sp_str_enc_step_i(_e253, _t251, (size_t)(_t252 - _t251), _t250, _l250, sp_str_is_binary(_t250)); memcpy(_t252, _t250, _l250); _t252 += _l250; *_t252 = 0; sp_str_set_len(_t251, (size_t)(_t252 - _t251)); if (_e253 == 1) sp_str_mark_binary(_t251); (const char *)_t251; })); sp_puts_str_line(_ps); }
 #line 783 "app/wifi_status.rb"
-              ({ sp_RbVal _t307 = lv_client__bp1541; SP_GC_ROOT_RBVAL(_t307); _t307.tag == SP_TAG_OBJ && _t307.cls_id == SP_BUILTIN_QUEUE ? ((void)sp_Queue_close((sp_queue *)_t307.v.p), _t307) : _t307.tag == SP_TAG_OBJ && _t307.cls_id == SP_BUILTIN_DIR ? ((void)sp_Dir_close((sp_Dir *)_t307.v.p), sp_box_nil()) : ({ sp_File *_t306 = sp_poly_as_io(_t307, "close"); (void)sp_File_close(_t306); sp_box_nil(); }); });
-#line 783 "app/wifi_status.rb"
+            if (sp_str_empty_p(lv_url)) {
+#line 784 "app/wifi_status.rb"
+              sp_ota_error(lv_client__bp1561, 400LL, ((char *)_fzl_39.d));
+#line 784 "app/wifi_status.rb"
             }
-#line 785 "app/wifi_status.rb"
-            { const char *_ps = (const char *)(({ sp_int _t308 = lv_loop_count; const char *_t309 = sp_str_or_empty(sp_StrArray_get(sp_str_split_drop_trailing(lv_req, ((char *)_fzl_11.d)), 0LL)); SP_GC_ROOT(_t309); size_t _l309 = sp_str_byte_len(_t309); size_t _cap310 = 32UL + _l309; char *_t310 = sp_str_alloc_raw(_cap310 + 1); char *_t311 = _t310; int _e312 = 0; memcpy(_t311, "[", 1); _t311 += 1; _t311 = sp_w_int_plain(_t311, _t308); _e312 = sp_str_enc_step_i(_e312, _t310, (size_t)(_t311 - _t310), "] served: ", 10, 0); memcpy(_t311, "] served: ", 10); _t311 += 10; _e312 = sp_str_enc_step_i(_e312, _t310, (size_t)(_t311 - _t310), _t309, _l309, sp_str_is_binary(_t309)); memcpy(_t311, _t309, _l309); _t311 += _l309; *_t311 = 0; sp_str_set_len(_t310, (size_t)(_t311 - _t310)); if (_e312 == 1) sp_str_mark_binary(_t310); (const char *)_t310; })); sp_puts_str_line(_ps); }
+#line 784 "app/wifi_status.rb"
+            else {
 #line 786 "app/wifi_status.rb"
-            sp_exc_top -= 1; continue;
-#line 786 "app/wifi_status.rb"
-          }
-#line 786 "app/wifi_status.rb"
-          else {
-#line 786 "app/wifi_status.rb"
-            if (sp_str_start_with(lv_path__bp1541, ((char *)_fzl_42.d))) {
+              lv_hostport = ({ const char *_t254 = sp_StrArray_get(sp_str_split_limit(lv_url, ((char *)_fzl_40.d), 2LL), 0LL); _t254 ? _t254 : sp_str_frozen_empty; });
+#line 787 "app/wifi_status.rb"
+              lv_upath = ({ const char *_t255 = ((char *)_fzl_40.d); SP_GC_ROOT(_t255); const char *_t256 = (({ const char *_t257 = sp_StrArray_get(sp_str_split_limit(lv_url, ((char *)_fzl_40.d), 2LL), 1LL); _t257 ? _t257 : sp_str_frozen_empty; })); SP_GC_ROOT(_t256); sp_str_plus(_t255, _t256); });
 #line 788 "app/wifi_status.rb"
-              lv_slot = ((sp_int)(sp_ffi_f26_esp32_ota_running_slot()));
+              lv_colon = sp_str_rindex_opt(lv_hostport, ((char *)_fzl_41.d));
 #line 789 "app/wifi_status.rb"
-              lv_slot_s__bp1541 = ((lv_slot == 0LL) ? ((char *)_fzl_33.d) : ((lv_slot == 1LL) ? ((char *)_fzl_34.d) : ((char *)_fzl_35.d)));
+              lv_ohost = ((!(lv_colon).nil) ? sp_str_sub_range(lv_hostport, 0LL, sp_oint_arg(lv_colon)) : lv_hostport);
 #line 790 "app/wifi_status.rb"
-              lv_st = ({ sp_RbVal _t314 = lv_ota_state; sp_RbVal _t316 = {0}; if (sp_poly_truthy(_t314)) {
-#line 790 "app/wifi_status.rb"
-_t316 = _t314;
-#line 790 "app/wifi_status.rb"
-}
-#line 790 "app/wifi_status.rb"
-else {               sp_StrPolyHash *_t315 = sp_StrPolyHash_new();
-#line 790 "app/wifi_status.rb"
-              SP_GC_ROOT(_t315);
-#line 790 "app/wifi_status.rb"
-              sp_StrPolyHash_set(_t315, ((char *)_fzl_3.d), sp_box_str(((char *)_fzl_43.d)));
-#line 790 "app/wifi_status.rb"
-              sp_StrPolyHash_set(_t315, ((char *)_fzl_4.d), sp_box_int(0LL));
-#line 790 "app/wifi_status.rb"
-              sp_StrPolyHash_set(_t315, ((char *)_fzl_19.d), sp_box_nil());
-#line 790 "app/wifi_status.rb"
-              sp_StrPolyHash_set(_t315, ((char *)_fzl_16.d), sp_box_nil());
-#line 790 "app/wifi_status.rb"
-_t316 = sp_box_nullable_obj((void *)(_t315), SP_BUILTIN_STR_POLY_HASH); } _t316; });
+              lv_oport = ((!(lv_colon).nil) ? sp_str_to_i_cruby(sp_str_sub_range(lv_hostport, sp_int_add(lv_colon.v, 1LL), sp_str_length_m(lv_hostport))) : 80LL);
 #line 791 "app/wifi_status.rb"
-              lv_body = ({ const char *_t317 = sp_str_or_empty(lv_slot_s__bp1541); SP_GC_ROOT(_t317); size_t _l317 = sp_str_byte_len(_t317); int _t318 = 0; const char *_t320 = ({ sp_RbVal _t319 = sp_poly_get_str(lv_st, ((char *)_fzl_3.d)); _t318 = !(sp_poly_is_strbuf(_t319) || _t319.tag == SP_TAG_STR); sp_poly_to_s(_t319); }); SP_GC_ROOT(_t320); size_t _l320 = sp_str_byte_len(_t320); int _t321 = 0; const char *_t323 = ({ sp_RbVal _t322 = sp_poly_get_str(lv_st, ((char *)_fzl_4.d)); _t321 = !(sp_poly_is_strbuf(_t322) || _t322.tag == SP_TAG_STR); sp_poly_to_s(_t322); }); SP_GC_ROOT(_t323); size_t _l323 = sp_str_byte_len(_t323); const char *_t330 = sp_str_or_empty((sp_poly_truthy(sp_poly_get_str(lv_st, ((char *)_fzl_19.d))) ? ({ int _t324 = 0; const char *_t326 = ({ sp_RbVal _t325 = sp_poly_get_str(lv_st, ((char *)_fzl_19.d)); _t324 = !(sp_poly_is_strbuf(_t325) || _t325.tag == SP_TAG_STR); sp_poly_to_s(_t325); }); SP_GC_ROOT(_t326); size_t _l326 = sp_str_byte_len(_t326); size_t _cap327 = 2UL + _l326; char *_t327 = sp_str_alloc_raw(_cap327 + 1); char *_t328 = _t327; int _e329 = 0; memcpy(_t328, ", ", 2); _t328 += 2; if (!_t324) _e329 = sp_str_enc_step_i(_e329, _t327, (size_t)(_t328 - _t327), _t326, _l326, sp_str_is_binary(_t326)); memcpy(_t328, _t326, _l326); _t328 += _l326; *_t328 = 0; sp_str_set_len(_t327, (size_t)(_t328 - _t327)); if (_e329 == 1) sp_str_mark_binary(_t327); (const char *)_t327; }) : ((char *)_fzl_6.d))); SP_GC_ROOT(_t330); size_t _l330 = sp_str_byte_len(_t330); size_t _cap331 = 50UL + _l317 + _l320 + _l323 + _l330; char *_t331 = sp_str_alloc_raw(_cap331 + 1); char *_t332 = _t331; int _e333 = 0; memcpy(_t332, "running slot: ", 14); _t332 += 14; _e333 = sp_str_enc_step_i(_e333, _t331, (size_t)(_t332 - _t331), _t317, _l317, sp_str_is_binary(_t317)); memcpy(_t332, _t317, _l317); _t332 += _l317; _e333 = sp_str_enc_step_i(_e333, _t331, (size_t)(_t332 - _t331), "\nlast ota: ", 11, 0); memcpy(_t332, "\nlast ota: ", 11); _t332 += 11; if (!_t318) _e333 = sp_str_enc_step_i(_e333, _t331, (size_t)(_t332 - _t331), _t320, _l320, sp_str_is_binary(_t320)); memcpy(_t332, _t320, _l320); _t332 += _l320; _e333 = sp_str_enc_step_i(_e333, _t331, (size_t)(_t332 - _t331), " ", 1, 0); memcpy(_t332, " ", 1); _t332 += 1; _e333 = sp_str_enc_step_i(_e333, _t331, (size_t)(_t332 - _t331), "(", 1, 0); memcpy(_t332, "(", 1); _t332 += 1; if (!_t321) _e333 = sp_str_enc_step_i(_e333, _t331, (size_t)(_t332 - _t331), _t323, _l323, sp_str_is_binary(_t323)); memcpy(_t332, _t323, _l323); _t332 += _l323; _e333 = sp_str_enc_step_i(_e333, _t331, (size_t)(_t332 - _t331), " bytes", 6, 0); memcpy(_t332, " bytes", 6); _t332 += 6; _e333 = sp_str_enc_step_i(_e333, _t331, (size_t)(_t332 - _t331), _t330, _l330, sp_str_is_binary(_t330)); memcpy(_t332, _t330, _l330); _t332 += _l330; _e333 = sp_str_enc_step_i(_e333, _t331, (size_t)(_t332 - _t331), ")\n", 2, 0); memcpy(_t332, ")\n", 2); _t332 += 2; _e333 = sp_str_enc_step_i(_e333, _t331, (size_t)(_t332 - _t331), "reboot pending\n", 15, 0); memcpy(_t332, "reboot pending\n", 15); _t332 += 15; *_t332 = 0; sp_str_set_len(_t331, (size_t)(_t332 - _t331)); if (_e333 == 1) sp_str_mark_binary(_t331); (const char *)_t331; });
+              if ((lv_oport == 0LL)) {
+#line 791 "app/wifi_status.rb"
+                lv_oport = 80LL;
+#line 791 "app/wifi_status.rb"
+              }
 #line 794 "app/wifi_status.rb"
-              const char * _t337 = ({ sp_int _t334 = sp_str_bytesize_m(lv_body); size_t _cap335 = 103UL; char *_t335 = sp_str_alloc_raw(_cap335 + 1); char *_t336 = _t335; memcpy(_t336, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n", 43); _t336 += 43; memcpy(_t336, "Content-Length: ", 16); _t336 += 16; _t336 = sp_w_int_plain(_t336, _t334); memcpy(_t336, "\r\nConnection: close\r\n\r\n", 23); _t336 += 23; *_t336 = 0; sp_str_set_len(_t335, (size_t)(_t336 - _t335)); (const char *)_t335; }); SP_GC_ROOT(_t337);
-#line 794 "app/wifi_status.rb"
-              ({ sp_File *_t338 = sp_poly_as_io(lv_client__bp1541, "write"); sp_File_write_bin(_t338, _t337); });
+              { const char *_ps = (const char *)(({ sp_int _t258 = lv_loop_count; const char *_t259 = sp_str_or_empty(lv_ohost); SP_GC_ROOT(_t259); size_t _l259 = sp_str_byte_len(_t259); sp_int _t260 = lv_oport; const char *_t261 = sp_str_or_empty(lv_upath); SP_GC_ROOT(_t261); size_t _l261 = sp_str_byte_len(_t261); size_t _cap262 = 62UL + _l259 + _l261; char *_t262 = sp_str_alloc_raw(_cap262 + 1); char *_t263 = _t262; int _e264 = 0; memcpy(_t263, "[", 1); _t263 += 1; _t263 = sp_w_int_plain(_t263, _t258); _e264 = sp_str_enc_step_i(_e264, _t262, (size_t)(_t263 - _t262), "] OTA connecting ", 17, 0); memcpy(_t263, "] OTA connecting ", 17); _t263 += 17; _e264 = sp_str_enc_step_i(_e264, _t262, (size_t)(_t263 - _t262), _t259, _l259, sp_str_is_binary(_t259)); memcpy(_t263, _t259, _l259); _t263 += _l259; _e264 = sp_str_enc_step_i(_e264, _t262, (size_t)(_t263 - _t262), ":", 1, 0); memcpy(_t263, ":", 1); _t263 += 1; _t263 = sp_w_int(_t263, _t260); _e264 = sp_str_enc_step_i(_e264, _t262, (size_t)(_t263 - _t262), " ", 1, 0); memcpy(_t263, " ", 1); _t263 += 1; _e264 = sp_str_enc_step_i(_e264, _t262, (size_t)(_t263 - _t262), _t261, _l261, sp_str_is_binary(_t261)); memcpy(_t263, _t261, _l261); _t263 += _l261; *_t263 = 0; sp_str_set_len(_t262, (size_t)(_t263 - _t262)); if (_e264 == 1) sp_str_mark_binary(_t262); (const char *)_t262; })); sp_puts_str_line(_ps); }
+#line 795 "app/wifi_status.rb"
+              lv_ota_state = sp_box_nullable_obj((void *)(sp_ota_download(lv_ohost, lv_oport, lv_upath, lv_force__bp1561)), SP_BUILTIN_STR_POLY_HASH);
 #line 796 "app/wifi_status.rb"
-              ({ sp_File *_t339 = sp_poly_as_io(lv_client__bp1541, "write"); sp_File_write_bin(_t339, lv_body); });
-#line 797 "app/wifi_status.rb"
-              ({ sp_RbVal _t341 = lv_client__bp1541; SP_GC_ROOT_RBVAL(_t341); _t341.tag == SP_TAG_OBJ && _t341.cls_id == SP_BUILTIN_QUEUE ? ((void)sp_Queue_close((sp_queue *)_t341.v.p), _t341) : _t341.tag == SP_TAG_OBJ && _t341.cls_id == SP_BUILTIN_DIR ? ((void)sp_Dir_close((sp_Dir *)_t341.v.p), sp_box_nil()) : ({ sp_File *_t340 = sp_poly_as_io(_t341, "close"); (void)sp_File_close(_t340); sp_box_nil(); }); });
+              { const char *_ps = (const char *)(({ sp_int _t265 = lv_loop_count; int _t266 = 0; const char *_t268 = ({ sp_RbVal _t267 = sp_poly_get_str(lv_ota_state, ((char *)_fzl_3.d)); _t266 = !(sp_poly_is_strbuf(_t267) || _t267.tag == SP_TAG_STR); sp_poly_to_s(_t267); }); SP_GC_ROOT(_t268); size_t _l268 = sp_str_byte_len(_t268); int _t269 = 0; const char *_t271 = ({ sp_RbVal _t270 = sp_poly_get_str(lv_ota_state, ((char *)_fzl_4.d)); _t269 = !(sp_poly_is_strbuf(_t270) || _t270.tag == SP_TAG_STR); sp_poly_to_s(_t270); }); SP_GC_ROOT(_t271); size_t _l271 = sp_str_byte_len(_t271); int _t272 = 0; const char *_t274 = ({ sp_RbVal _t273 = sp_poly_get_str(lv_ota_state, ((char *)_fzl_19.d)); _t272 = !(sp_poly_is_strbuf(_t273) || _t273.tag == SP_TAG_STR); sp_poly_to_s(_t273); }); SP_GC_ROOT(_t274); size_t _l274 = sp_str_byte_len(_t274); size_t _cap275 = 39UL + _l268 + _l271 + _l274; char *_t275 = sp_str_alloc_raw(_cap275 + 1); char *_t276 = _t275; int _e277 = 0; memcpy(_t276, "[", 1); _t276 += 1; _t276 = sp_w_int_plain(_t276, _t265); _e277 = sp_str_enc_step_i(_e277, _t275, (size_t)(_t276 - _t275), "] OTA result: ", 14, 0); memcpy(_t276, "] OTA result: ", 14); _t276 += 14; if (!_t266) _e277 = sp_str_enc_step_i(_e277, _t275, (size_t)(_t276 - _t275), _t268, _l268, sp_str_is_binary(_t268)); memcpy(_t276, _t268, _l268); _t276 += _l268; _e277 = sp_str_enc_step_i(_e277, _t275, (size_t)(_t276 - _t275), " ", 1, 0); memcpy(_t276, " ", 1); _t276 += 1; if (!_t269) _e277 = sp_str_enc_step_i(_e277, _t275, (size_t)(_t276 - _t275), _t271, _l271, sp_str_is_binary(_t271)); memcpy(_t276, _t271, _l271); _t276 += _l271; _e277 = sp_str_enc_step_i(_e277, _t275, (size_t)(_t276 - _t275), "B ", 2, 0); memcpy(_t276, "B ", 2); _t276 += 2; if (!_t272) _e277 = sp_str_enc_step_i(_e277, _t275, (size_t)(_t276 - _t275), _t274, _l274, sp_str_is_binary(_t274)); memcpy(_t276, _t274, _l274); _t276 += _l274; *_t276 = 0; sp_str_set_len(_t275, (size_t)(_t276 - _t275)); if (_e277 == 1) sp_str_mark_binary(_t275); (const char *)_t275; })); sp_puts_str_line(_ps); }
 #line 798 "app/wifi_status.rb"
-              { const char *_ps = (const char *)(({ sp_int _t342 = lv_loop_count; const char *_t343 = sp_str_or_empty(sp_StrArray_get(sp_str_split_drop_trailing(lv_req, ((char *)_fzl_11.d)), 0LL)); SP_GC_ROOT(_t343); size_t _l343 = sp_str_byte_len(_t343); size_t _cap344 = 32UL + _l343; char *_t344 = sp_str_alloc_raw(_cap344 + 1); char *_t345 = _t344; int _e346 = 0; memcpy(_t345, "[", 1); _t345 += 1; _t345 = sp_w_int_plain(_t345, _t342); _e346 = sp_str_enc_step_i(_e346, _t344, (size_t)(_t345 - _t344), "] served: ", 10, 0); memcpy(_t345, "] served: ", 10); _t345 += 10; _e346 = sp_str_enc_step_i(_e346, _t344, (size_t)(_t345 - _t344), _t343, _l343, sp_str_is_binary(_t343)); memcpy(_t345, _t343, _l343); _t345 += _l343; *_t345 = 0; sp_str_set_len(_t344, (size_t)(_t345 - _t344)); if (_e346 == 1) sp_str_mark_binary(_t344); (const char *)_t344; })); sp_puts_str_line(_ps); }
-#line 799 "app/wifi_status.rb"
-              sp_exc_top -= 1; continue;
-#line 799 "app/wifi_status.rb"
+              lv_body = ({ int _t278 = 0; const char *_t280 = ({ sp_RbVal _t279 = sp_poly_get_str(lv_ota_state, ((char *)_fzl_3.d)); _t278 = !(sp_poly_is_strbuf(_t279) || _t279.tag == SP_TAG_STR); sp_poly_to_s(_t279); }); SP_GC_ROOT(_t280); size_t _l280 = sp_str_byte_len(_t280); int _t281 = 0; const char *_t283 = ({ sp_RbVal _t282 = sp_poly_get_str(lv_ota_state, ((char *)_fzl_4.d)); _t281 = !(sp_poly_is_strbuf(_t282) || _t282.tag == SP_TAG_STR); sp_poly_to_s(_t282); }); SP_GC_ROOT(_t283); size_t _l283 = sp_str_byte_len(_t283); const char *_t296 = sp_str_or_empty((sp_poly_truthy(sp_poly_get_str(lv_ota_state, ((char *)_fzl_19.d))) ? ({ int _t284 = 0; const char *_t286 = ({ sp_RbVal _t285 = sp_poly_get_str(lv_ota_state, ((char *)_fzl_19.d)); _t284 = !(sp_poly_is_strbuf(_t285) || _t285.tag == SP_TAG_STR); sp_poly_to_s(_t285); }); SP_GC_ROOT(_t286); size_t _l286 = sp_str_byte_len(_t286); size_t _cap287 = 6UL + _l286; char *_t287 = sp_str_alloc_raw(_cap287 + 1); char *_t288 = _t287; int _e289 = 0; memcpy(_t288, "error=", 6); _t288 += 6; if (!_t284) _e289 = sp_str_enc_step_i(_e289, _t287, (size_t)(_t288 - _t287), _t286, _l286, sp_str_is_binary(_t286)); memcpy(_t288, _t286, _l286); _t288 += _l286; *_t288 = 0; sp_str_set_len(_t287, (size_t)(_t288 - _t287)); if (_e289 == 1) sp_str_mark_binary(_t287); (const char *)_t287; }) : ({ int _t290 = 0; const char *_t292 = ({ sp_RbVal _t291 = sp_poly_get_str(lv_ota_state, ((char *)_fzl_16.d)); _t290 = !(sp_poly_is_strbuf(_t291) || _t291.tag == SP_TAG_STR); sp_poly_to_s(_t291); }); SP_GC_ROOT(_t292); size_t _l292 = sp_str_byte_len(_t292); size_t _cap293 = 5UL + _l292; char *_t293 = sp_str_alloc_raw(_cap293 + 1); char *_t294 = _t293; int _e295 = 0; memcpy(_t294, "slot=", 5); _t294 += 5; if (!_t290) _e295 = sp_str_enc_step_i(_e295, _t293, (size_t)(_t294 - _t293), _t292, _l292, sp_str_is_binary(_t292)); memcpy(_t294, _t292, _l292); _t294 += _l292; *_t294 = 0; sp_str_set_len(_t293, (size_t)(_t294 - _t293)); if (_e295 == 1) sp_str_mark_binary(_t293); (const char *)_t293; }))); SP_GC_ROOT(_t296); size_t _l296 = sp_str_byte_len(_t296); size_t _cap297 = 14UL + _l280 + _l283 + _l296; char *_t297 = sp_str_alloc_raw(_cap297 + 1); char *_t298 = _t297; int _e299 = 0; memcpy(_t298, "OTA ", 4); _t298 += 4; if (!_t278) _e299 = sp_str_enc_step_i(_e299, _t297, (size_t)(_t298 - _t297), _t280, _l280, sp_str_is_binary(_t280)); memcpy(_t298, _t280, _l280); _t298 += _l280; _e299 = sp_str_enc_step_i(_e299, _t297, (size_t)(_t298 - _t297), ": ", 2, 0); memcpy(_t298, ": ", 2); _t298 += 2; if (!_t281) _e299 = sp_str_enc_step_i(_e299, _t297, (size_t)(_t298 - _t297), _t283, _l283, sp_str_is_binary(_t283)); memcpy(_t298, _t283, _l283); _t298 += _l283; _e299 = sp_str_enc_step_i(_e299, _t297, (size_t)(_t298 - _t297), " bytes ", 7, 0); memcpy(_t298, " bytes ", 7); _t298 += 7; _e299 = sp_str_enc_step_i(_e299, _t297, (size_t)(_t298 - _t297), _t296, _l296, sp_str_is_binary(_t296)); memcpy(_t298, _t296, _l296); _t298 += _l296; _e299 = sp_str_enc_step_i(_e299, _t297, (size_t)(_t298 - _t297), "\n", 1, 0); memcpy(_t298, "\n", 1); _t298 += 1; *_t298 = 0; sp_str_set_len(_t297, (size_t)(_t298 - _t297)); if (_e299 == 1) sp_str_mark_binary(_t297); (const char *)_t297; });
+#line 800 "app/wifi_status.rb"
+              const char * _t303 = ({ sp_int _t300 = sp_str_bytesize_m(lv_body); size_t _cap301 = 103UL; char *_t301 = sp_str_alloc_raw(_cap301 + 1); char *_t302 = _t301; memcpy(_t302, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n", 43); _t302 += 43; memcpy(_t302, "Content-Length: ", 16); _t302 += 16; _t302 = sp_w_int_plain(_t302, _t300); memcpy(_t302, "\r\nConnection: close\r\n\r\n", 23); _t302 += 23; *_t302 = 0; sp_str_set_len(_t301, (size_t)(_t302 - _t301)); (const char *)_t301; }); SP_GC_ROOT(_t303);
+#line 800 "app/wifi_status.rb"
+              ({ sp_File *_t304 = sp_poly_as_io(lv_client__bp1561, "write"); sp_File_write_bin(_t304, _t303); });
+#line 802 "app/wifi_status.rb"
+              ({ sp_File *_t305 = sp_poly_as_io(lv_client__bp1561, "write"); sp_File_write_bin(_t305, lv_body); });
+#line 803 "app/wifi_status.rb"
+              ({ sp_RbVal _t307 = lv_client__bp1561; SP_GC_ROOT_RBVAL(_t307); _t307.tag == SP_TAG_OBJ && _t307.cls_id == SP_BUILTIN_QUEUE ? ((void)sp_Queue_close((sp_queue *)_t307.v.p), _t307) : _t307.tag == SP_TAG_OBJ && _t307.cls_id == SP_BUILTIN_DIR ? ((void)sp_Dir_close((sp_Dir *)_t307.v.p), sp_box_nil()) : ({ sp_File *_t306 = sp_poly_as_io(_t307, "close"); (void)sp_File_close(_t306); sp_box_nil(); }); });
+#line 803 "app/wifi_status.rb"
             }
-#line 799 "app/wifi_status.rb"
-            else {
-#line 799 "app/wifi_status.rb"
-              if (sp_str_start_with(lv_path__bp1541, ((char *)_fzl_44.d))) {
-#line 801 "app/wifi_status.rb"
-                lv_body = ((char *)_fzl_45.d);
-#line 802 "app/wifi_status.rb"
-                const char * _t350 = ({ sp_int _t347 = sp_str_bytesize_m(lv_body); size_t _cap348 = 103UL; char *_t348 = sp_str_alloc_raw(_cap348 + 1); char *_t349 = _t348; memcpy(_t349, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n", 43); _t349 += 43; memcpy(_t349, "Content-Length: ", 16); _t349 += 16; _t349 = sp_w_int_plain(_t349, _t347); memcpy(_t349, "\r\nConnection: close\r\n\r\n", 23); _t349 += 23; *_t349 = 0; sp_str_set_len(_t348, (size_t)(_t349 - _t348)); (const char *)_t348; }); SP_GC_ROOT(_t350);
-#line 802 "app/wifi_status.rb"
-                ({ sp_File *_t351 = sp_poly_as_io(lv_client__bp1541, "write"); sp_File_write_bin(_t351, _t350); });
-#line 804 "app/wifi_status.rb"
-                sp_exc_check_depth();
-#line 804 "app/wifi_status.rb"
-                sp_exc_rootmark[sp_exc_top] = sp_gc_nroots; sp_rescue_mark[sp_exc_top] = sp_rescue_sp;
-#line 804 "app/wifi_status.rb"
-                sp_exc_msg[sp_exc_top] = 0; sp_exc_obj[sp_exc_top] = 0; sp_exc_top++;
-#line 804 "app/wifi_status.rb"
-                if (setjmp(sp_exc_stack[sp_exc_top-1]) == 0) {
 #line 805 "app/wifi_status.rb"
-                  ({ sp_File *_t353 = sp_poly_as_io(lv_client__bp1541, "write"); sp_File_write_bin(_t353, lv_body); });
+            { const char *_ps = (const char *)(({ sp_int _t308 = lv_loop_count; const char *_t309 = sp_str_or_empty(sp_StrArray_get(sp_str_split_drop_trailing(lv_req, ((char *)_fzl_11.d)), 0LL)); SP_GC_ROOT(_t309); size_t _l309 = sp_str_byte_len(_t309); size_t _cap310 = 32UL + _l309; char *_t310 = sp_str_alloc_raw(_cap310 + 1); char *_t311 = _t310; int _e312 = 0; memcpy(_t311, "[", 1); _t311 += 1; _t311 = sp_w_int_plain(_t311, _t308); _e312 = sp_str_enc_step_i(_e312, _t310, (size_t)(_t311 - _t310), "] served: ", 10, 0); memcpy(_t311, "] served: ", 10); _t311 += 10; _e312 = sp_str_enc_step_i(_e312, _t310, (size_t)(_t311 - _t310), _t309, _l309, sp_str_is_binary(_t309)); memcpy(_t311, _t309, _l309); _t311 += _l309; *_t311 = 0; sp_str_set_len(_t310, (size_t)(_t311 - _t310)); if (_e312 == 1) sp_str_mark_binary(_t310); (const char *)_t310; })); sp_puts_str_line(_ps); }
 #line 806 "app/wifi_status.rb"
-                  ({ sp_RbVal _t355 = lv_client__bp1541; SP_GC_ROOT_RBVAL(_t355); _t355.tag == SP_TAG_OBJ && _t355.cls_id == SP_BUILTIN_QUEUE ? ((void)sp_Queue_close((sp_queue *)_t355.v.p), _t355) : _t355.tag == SP_TAG_OBJ && _t355.cls_id == SP_BUILTIN_DIR ? ((void)sp_Dir_close((sp_Dir *)_t355.v.p), sp_box_nil()) : ({ sp_File *_t354 = sp_poly_as_io(_t355, "close"); (void)sp_File_close(_t354); sp_box_nil(); }); });
+            sp_exc_top -= 1; continue;
 #line 806 "app/wifi_status.rb"
-                  sp_exc_top--;
+          }
 #line 806 "app/wifi_status.rb"
-                }
+          else {
 #line 806 "app/wifi_status.rb"
-                else {
-#line 806 "app/wifi_status.rb"
-                  sp_exc_top--;
-#line 806 "app/wifi_status.rb"
-                  sp_gc_nroots = sp_exc_rootmark[sp_exc_top]; sp_rescue_sp = sp_rescue_mark[sp_exc_top];
-#line 806 "app/wifi_status.rb"
-                  if (sp_unwind_kind == SP_UNWIND_NONE) {
-#line 806 "app/wifi_status.rb"
-                    if (strcmp((const char *)sp_last_exc_cls, "FiberKillSignal") == 0) sp_raise_cls("FiberKillSignal", sp_exc_msg[sp_exc_top]);
-#line 806 "app/wifi_status.rb"
-                    else {
-#line 806 "app/wifi_status.rb"
-                      const char *_rcls_356 = (const char *)sp_last_exc_cls; (void)_rcls_356;
-#line 806 "app/wifi_status.rb"
-                      const char *_rmsg_356 = sp_exc_msg[sp_exc_top]; (void)_rmsg_356;
-#line 806 "app/wifi_status.rb"
-                      if (sp_exc_cls_matches(_rcls_356, "StandardError")) {
-#line 806 "app/wifi_status.rb"
-                        sp_Exception *_ce_356 = sp_exc_obj[sp_exc_top] ? (sp_Exception *)sp_exc_obj[sp_exc_top] : sp_exc_new_for_catch(_rcls_356, _rmsg_356);
-#line 806 "app/wifi_status.rb"
-                        sp_rescue_push((void *)_ce_356);
-#line 806 "app/wifi_status.rb"
-                        if (_ce_356->backtrace == NULL) { sp_StrArray *_bt = sp_backtrace_captured(); sp_gc_wb((void *)_ce_356); _ce_356->backtrace = _bt; }
-#line 806 "app/wifi_status.rb"
-                        if (!_ce_356->cause) { sp_gc_wb((void *)_ce_356); _ce_356->cause = (sp_Exception *)sp_pending_cause; } sp_pending_cause = NULL;
+            if (sp_str_start_with(lv_path__bp1561, ((char *)_fzl_42.d))) {
 #line 808 "app/wifi_status.rb"
-                        0;
-#line 808 "app/wifi_status.rb"
-                        sp_rescue_sp--;
-#line 808 "app/wifi_status.rb"
-                      }
-#line 808 "app/wifi_status.rb"
-                      else {
-#line 808 "app/wifi_status.rb"
-                        sp_pending_exc_obj = sp_exc_obj[sp_exc_top]; sp_bt_keep = 1;
-#line 808 "app/wifi_status.rb"
-                        sp_raise_cls(_rcls_356, _rmsg_356);
-#line 808 "app/wifi_status.rb"
-                      }
-#line 808 "app/wifi_status.rb"
-                    }
-#line 808 "app/wifi_status.rb"
-                  }
-#line 808 "app/wifi_status.rb"
-                  if (sp_unwind_kind != SP_UNWIND_NONE) sp_unwind_resume();
-#line 808 "app/wifi_status.rb"
-                }
+              lv_slot = ((sp_int)(sp_ffi_f26_esp32_ota_running_slot()));
+#line 809 "app/wifi_status.rb"
+              lv_slot_s__bp1561 = ((lv_slot == 0LL) ? ((char *)_fzl_33.d) : ((lv_slot == 1LL) ? ((char *)_fzl_34.d) : ((char *)_fzl_35.d)));
 #line 810 "app/wifi_status.rb"
-                { const char *_ps = (const char *)(({ sp_int _t357 = lv_loop_count; size_t _cap358 = 44UL; char *_t358 = sp_str_alloc_raw(_cap358 + 1); char *_t359 = _t358; memcpy(_t359, "[", 1); _t359 += 1; _t359 = sp_w_int_plain(_t359, _t357); memcpy(_t359, "] OTA reboot requested", 22); _t359 += 22; *_t359 = 0; sp_str_set_len(_t358, (size_t)(_t359 - _t358)); (const char *)_t358; })); sp_puts_str_line(_ps); }
-#line 811 "app/wifi_status.rb"
-                ((sp_int)(({ int _b361_0 = ((int)(100LL)); int _b361_r; sp_native_enter(); _b361_r = sp_ffi_f10_esp32_delay_ms(_b361_0); sp_native_leave(); _b361_r; })));
-#line 812 "app/wifi_status.rb"
-                ((sp_int)(sp_ffi_f28_esp32_ota_reboot()));
-#line 813 "app/wifi_status.rb"
-                sp_exc_top -= 1; continue;
-#line 813 "app/wifi_status.rb"
-              }
-#line 813 "app/wifi_status.rb"
-            }
-#line 813 "app/wifi_status.rb"
-          }
-#line 816 "app/wifi_status.rb"
-          lv_mv = ((sp_int)(sp_ffi_f1_esp32_adc_read_mv()));
-#line 817 "app/wifi_status.rb"
-          lv_cell_v__bp1541 = ((lv_mv >= 0LL) ? ({ double _t364 = (((double)(sp_int_mul(lv_mv, cst_DIVIDER)) / 1000.0)); double _r = sp_float_prec_op(_t364, 2, SP_PREC_ROUND); (_t364 != 0.0 && _r == 0.0) ? 0.0 : _r; }) : 0.0);
-#line 819 "app/wifi_status.rb"
-          lv_time_s__bp1541 = ((char *)_fzl_46.d);
-#line 820 "app/wifi_status.rb"
-          if ((((sp_int)(sp_ffi_f14_esp32_sntp_synced())) != 0LL)) {
-#line 821 "app/wifi_status.rb"
-            lv_rc = ((sp_int)(sp_ffi_f15_esp32_time_utc(((void *)(uintptr_t)(lv_time_buf)), ((int)(24LL)))));
-#line 822 "app/wifi_status.rb"
-            lv_time_s__bp1541 = ((lv_rc == 0LL) ? sp_str_strip(sp_str_delete(lv_time_buf, ((char *)_fzl_17.d))) : ((char *)_fzl_47.d));
-#line 822 "app/wifi_status.rb"
-          }
-#line 824 "app/wifi_status.rb"
-          lv_body = sp_rb_status_page(lv_ssid__bp1541, lv_rssi__bp1541, lv_chan__bp1541, lv_ip, (lv_led != 0LL), lv_cell_v__bp1541, lv_time_s__bp1541, lv_slot_s__bp1541, lv_ota_state);
-#line 826 "app/wifi_status.rb"
-          const char * _t370 = ({ sp_int _t367 = sp_str_bytesize_m(lv_body); size_t _cap368 = 102UL; char *_t368 = sp_str_alloc_raw(_cap368 + 1); char *_t369 = _t368; memcpy(_t369, "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n", 42); _t369 += 42; memcpy(_t369, "Content-Length: ", 16); _t369 += 16; _t369 = sp_w_int_plain(_t369, _t367); memcpy(_t369, "\r\nConnection: close\r\n\r\n", 23); _t369 += 23; *_t369 = 0; sp_str_set_len(_t368, (size_t)(_t369 - _t368)); (const char *)_t368; }); SP_GC_ROOT(_t370);
-#line 826 "app/wifi_status.rb"
-          ({ sp_File *_t371 = sp_poly_as_io(lv_client__bp1541, "write"); sp_File_write_bin(_t371, _t370); });
-#line 828 "app/wifi_status.rb"
-          ({ sp_File *_t372 = sp_poly_as_io(lv_client__bp1541, "write"); sp_File_write_bin(_t372, lv_body); });
-#line 829 "app/wifi_status.rb"
-          ({ sp_RbVal _t374 = lv_client__bp1541; SP_GC_ROOT_RBVAL(_t374); _t374.tag == SP_TAG_OBJ && _t374.cls_id == SP_BUILTIN_QUEUE ? ((void)sp_Queue_close((sp_queue *)_t374.v.p), _t374) : _t374.tag == SP_TAG_OBJ && _t374.cls_id == SP_BUILTIN_DIR ? ((void)sp_Dir_close((sp_Dir *)_t374.v.p), sp_box_nil()) : ({ sp_File *_t373 = sp_poly_as_io(_t374, "close"); (void)sp_File_close(_t373); sp_box_nil(); }); });
-#line 836 "app/wifi_status.rb"
-          ((sp_int)(sp_ffi_f20_esp32_gc_step()));
-#line 837 "app/wifi_status.rb"
-          { const char *_ps = (const char *)(({ sp_int _t376 = lv_loop_count; const char *_t377 = sp_str_or_empty(sp_StrArray_get(sp_str_split_drop_trailing(lv_req, ((char *)_fzl_11.d)), 0LL)); SP_GC_ROOT(_t377); size_t _l377 = sp_str_byte_len(_t377); size_t _cap378 = 32UL + _l377; char *_t378 = sp_str_alloc_raw(_cap378 + 1); char *_t379 = _t378; int _e380 = 0; memcpy(_t379, "[", 1); _t379 += 1; _t379 = sp_w_int_plain(_t379, _t376); _e380 = sp_str_enc_step_i(_e380, _t378, (size_t)(_t379 - _t378), "] served: ", 10, 0); memcpy(_t379, "] served: ", 10); _t379 += 10; _e380 = sp_str_enc_step_i(_e380, _t378, (size_t)(_t379 - _t378), _t377, _l377, sp_str_is_binary(_t377)); memcpy(_t379, _t377, _l377); _t379 += _l377; *_t379 = 0; sp_str_set_len(_t378, (size_t)(_t379 - _t378)); if (_e380 == 1) sp_str_mark_binary(_t378); (const char *)_t378; })); sp_puts_str_line(_ps); }
-#line 837 "app/wifi_status.rb"
-          sp_exc_top--;
-#line 837 "app/wifi_status.rb"
-        }
-#line 837 "app/wifi_status.rb"
-        else {
-#line 837 "app/wifi_status.rb"
-          sp_exc_top--;
-#line 837 "app/wifi_status.rb"
-          sp_gc_nroots = sp_exc_rootmark[sp_exc_top]; sp_rescue_sp = sp_rescue_mark[sp_exc_top];
-#line 837 "app/wifi_status.rb"
-          if (sp_unwind_kind == SP_UNWIND_NONE) {
-#line 837 "app/wifi_status.rb"
-            if (strcmp((const char *)sp_last_exc_cls, "FiberKillSignal") == 0) sp_raise_cls("FiberKillSignal", sp_exc_msg[sp_exc_top]);
-#line 837 "app/wifi_status.rb"
-            else {
-#line 837 "app/wifi_status.rb"
-              const char *_rcls_381 = (const char *)sp_last_exc_cls; (void)_rcls_381;
-#line 837 "app/wifi_status.rb"
-              const char *_rmsg_381 = sp_exc_msg[sp_exc_top]; (void)_rmsg_381;
-#line 837 "app/wifi_status.rb"
-              if (sp_exc_is_standard_error(_rcls_381)) {
-#line 837 "app/wifi_status.rb"
-                sp_Exception *_ce_381 = sp_exc_obj[sp_exc_top] ? (sp_Exception *)sp_exc_obj[sp_exc_top] : sp_exc_new_for_catch(_rcls_381, _rmsg_381);
-#line 837 "app/wifi_status.rb"
-                sp_rescue_push((void *)_ce_381);
-#line 837 "app/wifi_status.rb"
-                if (_ce_381->backtrace == NULL) { sp_StrArray *_bt = sp_backtrace_captured(); sp_gc_wb((void *)_ce_381); _ce_381->backtrace = _bt; }
-#line 837 "app/wifi_status.rb"
-                if (!_ce_381->cause) { sp_gc_wb((void *)_ce_381); _ce_381->cause = (sp_Exception *)sp_pending_cause; } sp_pending_cause = NULL;
-#line 837 "app/wifi_status.rb"
-                lv_e__bp1541 = _ce_381;
-#line 841 "app/wifi_status.rb"
-                sp_Exception *_t383 = lv_e__bp1541;
-#line 841 "app/wifi_status.rb"
-                sp_Exception *_t385 = lv_e__bp1541;
-#line 841 "app/wifi_status.rb"
-                { const char *_ps = (const char *)(({ sp_int _t382 = lv_loop_count; const char *_t384 = sp_class_to_s(((sp_Class){0, _t383 ? sp_exc_class_name(_t383) : SPL("NilClass")})); SP_GC_ROOT(_t384); size_t _l384 = sp_str_byte_len(_t384); const char *_t386 = sp_str_or_empty((_t385 ? sp_exc_message(_t385) : sp_str_empty)); SP_GC_ROOT(_t386); size_t _l386 = sp_str_byte_len(_t386); size_t _cap387 = 39UL + _l384 + _l386; char *_t387 = sp_str_alloc_raw(_cap387 + 1); char *_t388 = _t387; int _e389 = 0; memcpy(_t388, "[", 1); _t388 += 1; _t388 = sp_w_int_plain(_t388, _t382); _e389 = sp_str_enc_step_i(_e389, _t387, (size_t)(_t388 - _t387), "] client error: ", 16, 0); memcpy(_t388, "] client error: ", 16); _t388 += 16; _e389 = sp_str_enc_step_i(_e389, _t387, (size_t)(_t388 - _t387), _t384, _l384, sp_str_is_binary(_t384)); memcpy(_t388, _t384, _l384); _t388 += _l384; _e389 = sp_str_enc_step_i(_e389, _t387, (size_t)(_t388 - _t387), " ", 1, 0); memcpy(_t388, " ", 1); _t388 += 1; _e389 = sp_str_enc_step_i(_e389, _t387, (size_t)(_t388 - _t387), _t386, _l386, sp_str_is_binary(_t386)); memcpy(_t388, _t386, _l386); _t388 += _l386; *_t388 = 0; sp_str_set_len(_t387, (size_t)(_t388 - _t387)); if (_e389 == 1) sp_str_mark_binary(_t387); (const char *)_t387; })); sp_puts_str_line(_ps); }
-#line 842 "app/wifi_status.rb"
-                sp_exc_check_depth();
-#line 842 "app/wifi_status.rb"
-                sp_exc_rootmark[sp_exc_top] = sp_gc_nroots; sp_rescue_mark[sp_exc_top] = sp_rescue_sp;
-#line 842 "app/wifi_status.rb"
-                sp_exc_msg[sp_exc_top] = 0; sp_exc_obj[sp_exc_top] = 0; sp_exc_top++;
-#line 842 "app/wifi_status.rb"
-                if (setjmp(sp_exc_stack[sp_exc_top-1]) == 0) {
-#line 843 "app/wifi_status.rb"
-                  ({ sp_RbVal _t392 = lv_client__bp1541; SP_GC_ROOT_RBVAL(_t392); _t392.tag == SP_TAG_OBJ && _t392.cls_id == SP_BUILTIN_QUEUE ? ((void)sp_Queue_close((sp_queue *)_t392.v.p), _t392) : _t392.tag == SP_TAG_OBJ && _t392.cls_id == SP_BUILTIN_DIR ? ((void)sp_Dir_close((sp_Dir *)_t392.v.p), sp_box_nil()) : ({ sp_File *_t391 = sp_poly_as_io(_t392, "close"); (void)sp_File_close(_t391); sp_box_nil(); }); });
-#line 843 "app/wifi_status.rb"
-                  sp_exc_top--;
-#line 843 "app/wifi_status.rb"
-                }
-#line 843 "app/wifi_status.rb"
-                else {
-#line 843 "app/wifi_status.rb"
-                  sp_exc_top--;
-#line 843 "app/wifi_status.rb"
-                  sp_gc_nroots = sp_exc_rootmark[sp_exc_top]; sp_rescue_sp = sp_rescue_mark[sp_exc_top];
-#line 843 "app/wifi_status.rb"
-                  if (sp_unwind_kind == SP_UNWIND_NONE) {
-#line 843 "app/wifi_status.rb"
-                    if (strcmp((const char *)sp_last_exc_cls, "FiberKillSignal") == 0) sp_raise_cls("FiberKillSignal", sp_exc_msg[sp_exc_top]);
-#line 843 "app/wifi_status.rb"
-                    else {
-#line 843 "app/wifi_status.rb"
-                      const char *_rcls_393 = (const char *)sp_last_exc_cls; (void)_rcls_393;
-#line 843 "app/wifi_status.rb"
-                      const char *_rmsg_393 = sp_exc_msg[sp_exc_top]; (void)_rmsg_393;
-#line 843 "app/wifi_status.rb"
-                      if (sp_exc_cls_matches(_rcls_393, "StandardError")) {
-#line 843 "app/wifi_status.rb"
-                        sp_Exception *_ce_393 = sp_exc_obj[sp_exc_top] ? (sp_Exception *)sp_exc_obj[sp_exc_top] : sp_exc_new_for_catch(_rcls_393, _rmsg_393);
-#line 843 "app/wifi_status.rb"
-                        sp_rescue_push((void *)_ce_393);
-#line 843 "app/wifi_status.rb"
-                        if (_ce_393->backtrace == NULL) { sp_StrArray *_bt = sp_backtrace_captured(); sp_gc_wb((void *)_ce_393); _ce_393->backtrace = _bt; }
-#line 843 "app/wifi_status.rb"
-                        if (!_ce_393->cause) { sp_gc_wb((void *)_ce_393); _ce_393->cause = (sp_Exception *)sp_pending_cause; } sp_pending_cause = NULL;
-#line 845 "app/wifi_status.rb"
-                        0;
-#line 845 "app/wifi_status.rb"
-                        sp_rescue_sp--;
-#line 845 "app/wifi_status.rb"
-                      }
-#line 845 "app/wifi_status.rb"
-                      else {
-#line 845 "app/wifi_status.rb"
-                        sp_pending_exc_obj = sp_exc_obj[sp_exc_top]; sp_bt_keep = 1;
-#line 845 "app/wifi_status.rb"
-                        sp_raise_cls(_rcls_393, _rmsg_393);
-#line 845 "app/wifi_status.rb"
-                      }
-#line 845 "app/wifi_status.rb"
-                    }
-#line 845 "app/wifi_status.rb"
-                  }
-#line 845 "app/wifi_status.rb"
-                  if (sp_unwind_kind != SP_UNWIND_NONE) sp_unwind_resume();
-#line 845 "app/wifi_status.rb"
-                }
-#line 845 "app/wifi_status.rb"
-                sp_rescue_sp--;
-#line 845 "app/wifi_status.rb"
-              }
-#line 845 "app/wifi_status.rb"
-              else {
-#line 845 "app/wifi_status.rb"
-                sp_pending_exc_obj = sp_exc_obj[sp_exc_top]; sp_bt_keep = 1;
-#line 845 "app/wifi_status.rb"
-                sp_raise_cls(_rcls_381, _rmsg_381);
-#line 845 "app/wifi_status.rb"
-              }
-#line 845 "app/wifi_status.rb"
-            }
-#line 845 "app/wifi_status.rb"
-          }
-#line 845 "app/wifi_status.rb"
-          if (sp_unwind_kind != SP_UNWIND_NONE) sp_unwind_resume();
-#line 845 "app/wifi_status.rb"
-        }
-#line 845 "app/wifi_status.rb"
-      }
-#line 852 "app/wifi_status.rb"
-      if ((sp_imod(lv_loop_count, 50LL) == 0LL)) {
-#line 853 "app/wifi_status.rb"
-        lv_mv = ((sp_int)(sp_ffi_f1_esp32_adc_read_mv()));
-#line 854 "app/wifi_status.rb"
-        if ((lv_mv >= 0LL)) {
-#line 855 "app/wifi_status.rb"
-          { const char *_ps = (const char *)(({ sp_int _t395 = lv_loop_count; const char *_t397 = sp_float_opt_to_s(sp_ofloat_of(({ double _t396 = (((double)(sp_int_mul(lv_mv, cst_DIVIDER)) / 1000.0)); double _r = sp_float_prec_op(_t396, 2, SP_PREC_ROUND); (_t396 != 0.0 && _r == 0.0) ? 0.0 : _r; }))); SP_GC_ROOT(_t397); size_t _l397 = sp_str_byte_len(_t397); sp_int _t399 = ((sp_int)(sp_ffi_f16_esp32_heap_free())); sp_int _t401 = ((sp_int)(sp_ffi_f17_esp32_heap_min_free())); sp_int _t403 = ((sp_int)(sp_ffi_f18_esp32_heap_largest_block())); size_t _cap404 = 122UL + _l397; char *_t404 = sp_str_alloc_raw(_cap404 + 1); char *_t405 = _t404; int _e406 = 0; memcpy(_t405, "[", 1); _t405 += 1; _t405 = sp_w_int_plain(_t405, _t395); _e406 = sp_str_enc_step_i(_e406, _t404, (size_t)(_t405 - _t404), "] idle; cell ", 13, 0); memcpy(_t405, "] idle; cell ", 13); _t405 += 13; _e406 = sp_str_enc_step_i(_e406, _t404, (size_t)(_t405 - _t404), _t397, _l397, sp_str_is_binary(_t397)); memcpy(_t405, _t397, _l397); _t405 += _l397; _e406 = sp_str_enc_step_i(_e406, _t404, (size_t)(_t405 - _t404), "V ", 2, 0); memcpy(_t405, "V ", 2); _t405 += 2; _e406 = sp_str_enc_step_i(_e406, _t404, (size_t)(_t405 - _t404), "heap ", 5, 0); memcpy(_t405, "heap ", 5); _t405 += 5; _t405 = sp_w_int(_t405, _t399); _e406 = sp_str_enc_step_i(_e406, _t404, (size_t)(_t405 - _t404), " (min ", 6, 0); memcpy(_t405, " (min ", 6); _t405 += 6; _t405 = sp_w_int(_t405, _t401); _e406 = sp_str_enc_step_i(_e406, _t404, (size_t)(_t405 - _t404), ", ", 2, 0); memcpy(_t405, ", ", 2); _t405 += 2; _e406 = sp_str_enc_step_i(_e406, _t404, (size_t)(_t405 - _t404), "largest ", 8, 0); memcpy(_t405, "largest ", 8); _t405 += 8; _t405 = sp_w_int(_t405, _t403); _e406 = sp_str_enc_step_i(_e406, _t404, (size_t)(_t405 - _t404), ")", 1, 0); memcpy(_t405, ")", 1); _t405 += 1; *_t405 = 0; sp_str_set_len(_t404, (size_t)(_t405 - _t404)); if (_e406 == 1) sp_str_mark_binary(_t404); (const char *)_t404; })); sp_puts_str_line(_ps); }
-#line 855 "app/wifi_status.rb"
-        }
-#line 864 "app/wifi_status.rb"
-        ((sp_int)(sp_ffi_f20_esp32_gc_step()));
-#line 865 "app/wifi_status.rb"
-        ((sp_int)(({ int _b409_0 = ((int)(20LL)); int _b409_r; sp_native_enter(); _b409_r = sp_ffi_f10_esp32_delay_ms(_b409_0); sp_native_leave(); _b409_r; })));
-#line 865 "app/wifi_status.rb"
-      }
-#line 865 "app/wifi_status.rb"
-      else {
-#line 867 "app/wifi_status.rb"
-        ((sp_int)(({ int _b411_0 = ((int)(20LL)); int _b411_r; sp_native_enter(); _b411_r = sp_ffi_f10_esp32_delay_ms(_b411_0); sp_native_leave(); _b411_r; })));
-#line 867 "app/wifi_status.rb"
-      }
-#line 869 "app/wifi_status.rb"
-      lv_loop_count = (sp_int_add(lv_loop_count, 1LL));
-#line 869 "app/wifi_status.rb"
-    }
-#line 869 "app/wifi_status.rb"
-    sp_exc_top--;
-#line 869 "app/wifi_status.rb"
-  }
-#line 869 "app/wifi_status.rb"
-  else {
-#line 869 "app/wifi_status.rb"
-    sp_exc_top--;
-#line 869 "app/wifi_status.rb"
-    sp_gc_nroots = _gcb207;
-#line 869 "app/wifi_status.rb"
-    if (sp_unwind_kind != SP_UNWIND_NONE) sp_unwind_resume();
-#line 869 "app/wifi_status.rb"
-    if (!sp_exc_cls_matches((const char *)sp_last_exc_cls, "StopIteration")) { sp_pending_exc_obj = sp_exc_obj[sp_exc_top]; sp_raise_cls(sp_exc_cls[sp_exc_top], sp_exc_msg[sp_exc_top]); }
-#line 869 "app/wifi_status.rb"
-  }
-#line 598 "/home/tomek/spinel-esp32/vendor/spinel/builtins/enumerable.rb"
-#line 129 "/home/tomek/spinel-esp32/vendor/spinel/builtins/comparable.rb"
-  _sp_main_rc = 0;
-#line 129 "/home/tomek/spinel-esp32/vendor/spinel/builtins/comparable.rb"
-  sp_fin_run_exit();
-#line 129 "/home/tomek/spinel-esp32/vendor/spinel/builtins/comparable.rb"
+              lv_st = ({ sp_RbVal _t314 = lv_ota_state; sp_RbVal _t316 = {0}; if (sp_poly_truthy(_t314)) {
+#line 810 "app/wifi_status.rb"
+_t316 = _t314;
+#line 810 "app/wifi_status.rb"
 }
-#line 129 "/home/tomek/spinel-esp32/vendor/spinel/builtins/comparable.rb"
+#line 810 "app/wifi_status.rb"
+else {               sp_StrPolyHash *_t315 = sp_StrPolyHash_new();
+#line 810 "app/wifi_status.rb"
+              SP_GC_ROOT(_t315);
+#line 810 "app/wifi_status.rb"
+              sp_StrPolyHash_set(_t315, ((char *)_fzl_3.d), sp_box_str(((char *)_fzl_43.d)));
+#line 810 "app/wifi_status.rb"
+              sp_StrPolyHash_set(_t315, ((char *)_fzl_4.d), sp_box_int(0LL));
+#line 810 "app/wifi_status.rb"
+              sp_StrPolyHash_set(_t315, ((char *)_fzl_19.d), sp_box_nil());
+#line 810 "app/wifi_status.rb"
+              sp_StrPolyHash_set(_t315, ((char *)_fzl_16.d), sp_box_nil());
+#line 810 "app/wifi_status.rb"
+_t316 = sp_box_nullable_obj((void *)(_t315), SP_BUILTIN_STR_POLY_HASH); } _t316; });
+#line 811 "app/wifi_status.rb"
+              lv_body = ({ const char *_t317 = sp_str_or_empty(lv_slot_s__bp1561); SP_GC_ROOT(_t317); size_t _l317 = sp_str_byte_len(_t317); int _t318 = 0; const char *_t320 = ({ sp_RbVal _t319 = sp_poly_get_str(lv_st, ((char *)_fzl_3.d)); _t318 = !(sp_poly_is_strbuf(_t319) || _t319.tag == SP_TAG_STR); sp_poly_to_s(_t319); }); SP_GC_ROOT(_t320); size_t _l320 = sp_str_byte_len(_t320); int _t321 = 0; const char *_t323 = ({ sp_RbVal _t322 = sp_poly_get_str(lv_st, ((char *)_fzl_4.d)); _t321 = !(sp_poly_is_strbuf(_t322) || _t322.tag == SP_TAG_STR); sp_poly_to_s(_t322); }); SP_GC_ROOT(_t323); size_t _l323 = sp_str_byte_len(_t323); const char *_t330 = sp_str_or_empty((sp_poly_truthy(sp_poly_get_str(lv_st, ((char *)_fzl_19.d))) ? ({ int _t324 = 0; const char *_t326 = ({ sp_RbVal _t325 = sp_poly_get_str(lv_st, ((char *)_fzl_19.d)); _t324 = !(sp_poly_is_strbuf(_t325) || _t325.tag == SP_TAG_STR); sp_poly_to_s(_t325); }); SP_GC_ROOT(_t326); size_t _l326 = sp_str_byte_len(_t326); size_t _cap327 = 2UL + _l326; char *_t327 = sp_str_alloc_raw(_cap327 + 1); char *_t328 = _t327; int _e329 = 0; memcpy(_t328, ", ", 2); _t328 += 2; if (!_t324) _e329 = sp_str_enc_step_i(_e329, _t327, (size_t)(_t328 - _t327), _t326, _l326, sp_str_is_binary(_t326)); memcpy(_t328, _t326, _l326); _t328 += _l326; *_t328 = 0; sp_str_set_len(_t327, (size_t)(_t328 - _t327)); if (_e329 == 1) sp_str_mark_binary(_t327); (const char *)_t327; }) : ((char *)_fzl_6.d))); SP_GC_ROOT(_t330); size_t _l330 = sp_str_byte_len(_t330); size_t _cap331 = 50UL + _l317 + _l320 + _l323 + _l330; char *_t331 = sp_str_alloc_raw(_cap331 + 1); char *_t332 = _t331; int _e333 = 0; memcpy(_t332, "running slot: ", 14); _t332 += 14; _e333 = sp_str_enc_step_i(_e333, _t331, (size_t)(_t332 - _t331), _t317, _l317, sp_str_is_binary(_t317)); memcpy(_t332, _t317, _l317); _t332 += _l317; _e333 = sp_str_enc_step_i(_e333, _t331, (size_t)(_t332 - _t331), "\nlast ota: ", 11, 0); memcpy(_t332, "\nlast ota: ", 11); _t332 += 11; if (!_t318) _e333 = sp_str_enc_step_i(_e333, _t331, (size_t)(_t332 - _t331), _t320, _l320, sp_str_is_binary(_t320)); memcpy(_t332, _t320, _l320); _t332 += _l320; _e333 = sp_str_enc_step_i(_e333, _t331, (size_t)(_t332 - _t331), " ", 1, 0); memcpy(_t332, " ", 1); _t332 += 1; _e333 = sp_str_enc_step_i(_e333, _t331, (size_t)(_t332 - _t331), "(", 1, 0); memcpy(_t332, "(", 1); _t332 += 1; if (!_t321) _e333 = sp_str_enc_step_i(_e333, _t331, (size_t)(_t332 - _t331), _t323, _l323, sp_str_is_binary(_t323)); memcpy(_t332, _t323, _l323); _t332 += _l323; _e333 = sp_str_enc_step_i(_e333, _t331, (size_t)(_t332 - _t331), " bytes", 6, 0); memcpy(_t332, " bytes", 6); _t332 += 6; _e333 = sp_str_enc_step_i(_e333, _t331, (size_t)(_t332 - _t331), _t330, _l330, sp_str_is_binary(_t330)); memcpy(_t332, _t330, _l330); _t332 += _l330; _e333 = sp_str_enc_step_i(_e333, _t331, (size_t)(_t332 - _t331), ")\n", 2, 0); memcpy(_t332, ")\n", 2); _t332 += 2; _e333 = sp_str_enc_step_i(_e333, _t331, (size_t)(_t332 - _t331), "reboot pending\n", 15, 0); memcpy(_t332, "reboot pending\n", 15); _t332 += 15; *_t332 = 0; sp_str_set_len(_t331, (size_t)(_t332 - _t331)); if (_e333 == 1) sp_str_mark_binary(_t331); (const char *)_t331; });
+#line 814 "app/wifi_status.rb"
+              const char * _t337 = ({ sp_int _t334 = sp_str_bytesize_m(lv_body); size_t _cap335 = 103UL; char *_t335 = sp_str_alloc_raw(_cap335 + 1); char *_t336 = _t335; memcpy(_t336, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n", 43); _t336 += 43; memcpy(_t336, "Content-Length: ", 16); _t336 += 16; _t336 = sp_w_int_plain(_t336, _t334); memcpy(_t336, "\r\nConnection: close\r\n\r\n", 23); _t336 += 23; *_t336 = 0; sp_str_set_len(_t335, (size_t)(_t336 - _t335)); (const char *)_t335; }); SP_GC_ROOT(_t337);
+#line 814 "app/wifi_status.rb"
+              ({ sp_File *_t338 = sp_poly_as_io(lv_client__bp1561, "write"); sp_File_write_bin(_t338, _t337); });
+#line 816 "app/wifi_status.rb"
+              ({ sp_File *_t339 = sp_poly_as_io(lv_client__bp1561, "write"); sp_File_write_bin(_t339, lv_body); });
+#line 817 "app/wifi_status.rb"
+              ({ sp_RbVal _t341 = lv_client__bp1561; SP_GC_ROOT_RBVAL(_t341); _t341.tag == SP_TAG_OBJ && _t341.cls_id == SP_BUILTIN_QUEUE ? ((void)sp_Queue_close((sp_queue *)_t341.v.p), _t341) : _t341.tag == SP_TAG_OBJ && _t341.cls_id == SP_BUILTIN_DIR ? ((void)sp_Dir_close((sp_Dir *)_t341.v.p), sp_box_nil()) : ({ sp_File *_t340 = sp_poly_as_io(_t341, "close"); (void)sp_File_close(_t340); sp_box_nil(); }); });
+#line 818 "app/wifi_status.rb"
+              { const char *_ps = (const char *)(({ sp_int _t342 = lv_loop_count; const char *_t343 = sp_str_or_empty(sp_StrArray_get(sp_str_split_drop_trailing(lv_req, ((char *)_fzl_11.d)), 0LL)); SP_GC_ROOT(_t343); size_t _l343 = sp_str_byte_len(_t343); size_t _cap344 = 32UL + _l343; char *_t344 = sp_str_alloc_raw(_cap344 + 1); char *_t345 = _t344; int _e346 = 0; memcpy(_t345, "[", 1); _t345 += 1; _t345 = sp_w_int_plain(_t345, _t342); _e346 = sp_str_enc_step_i(_e346, _t344, (size_t)(_t345 - _t344), "] served: ", 10, 0); memcpy(_t345, "] served: ", 10); _t345 += 10; _e346 = sp_str_enc_step_i(_e346, _t344, (size_t)(_t345 - _t344), _t343, _l343, sp_str_is_binary(_t343)); memcpy(_t345, _t343, _l343); _t345 += _l343; *_t345 = 0; sp_str_set_len(_t344, (size_t)(_t345 - _t344)); if (_e346 == 1) sp_str_mark_binary(_t344); (const char *)_t344; })); sp_puts_str_line(_ps); }
+#line 819 "app/wifi_status.rb"
+              sp_exc_top -= 1; continue;
+#line 819 "app/wifi_status.rb"
+            }
+#line 819 "app/wifi_status.rb"
+            else {
+#line 819 "app/wifi_status.rb"
+              if (sp_str_start_with(lv_path__bp1561, ((char *)_fzl_44.d))) {
+#line 821 "app/wifi_status.rb"
+                lv_body = ((char *)_fzl_45.d);
+#line 822 "app/wifi_status.rb"
+                const char * _t350 = ({ sp_int _t347 = sp_str_bytesize_m(lv_body); size_t _cap348 = 103UL; char *_t348 = sp_str_alloc_raw(_cap348 + 1); char *_t349 = _t348; memcpy(_t349, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n", 43); _t349 += 43; memcpy(_t349, "Content-Length: ", 16); _t349 += 16; _t349 = sp_w_int_plain(_t349, _t347); memcpy(_t349, "\r\nConnection: close\r\n\r\n", 23); _t349 += 23; *_t349 = 0; sp_str_set_len(_t348, (size_t)(_t349 - _t348)); (const char *)_t348; }); SP_GC_ROOT(_t350);
+#line 822 "app/wifi_status.rb"
+                ({ sp_File *_t351 = sp_poly_as_io(lv_client__bp1561, "write"); sp_File_write_bin(_t351, _t350); });
+#line 824 "app/wifi_status.rb"
+                sp_exc_check_depth();
+#line 824 "app/wifi_status.rb"
+                sp_exc_rootmark[sp_exc_top] = sp_gc_nroots; sp_rescue_mark[sp_exc_top] = sp_rescue_sp;
+#line 824 "app/wifi_status.rb"
+                sp_exc_msg[sp_exc_top] = 0; sp_exc_obj[sp_exc_top] = 0; sp_exc_top++;
+#line 824 "app/wifi_status.rb"
+                if (setjmp(sp_exc_stack[sp_exc_top-1]) == 0) {
+#line 825 "app/wifi_status.rb"
+                  ({ sp_File *_t353 = sp_poly_as_io(lv_client__bp1561, "write"); sp_File_write_bin(_t353, lv_body); });
+#line 826 "app/wifi_status.rb"
+                  ({ sp_RbVal _t355 = lv_client__bp1561; SP_GC_ROOT_RBVAL(_t355); _t355.tag == SP_TAG_OBJ && _t355.cls_id == SP_BUILTIN_QUEUE ? ((void)sp_Queue_close((sp_queue *)_t355.v.p), _t355) : _t355.tag == SP_TAG_OBJ && _t355.cls_id == SP_BUILTIN_DIR ? ((void)sp_Dir_close((sp_Dir *)_t355.v.p), sp_box_nil()) : ({ sp_File *_t354 = sp_poly_as_io(_t355, "close"); (void)sp_File_close(_t354); sp_box_nil(); }); });
+#line 826 "app/wifi_status.rb"
+                  sp_exc_top--;
+#line 826 "app/wifi_status.rb"
+                }
+#line 826 "app/wifi_status.rb"
+                else {
+#line 826 "app/wifi_status.rb"
+                  sp_exc_top--;
+#line 826 "app/wifi_status.rb"
+                  sp_gc_nroots = sp_exc_rootmark[sp_exc_top]; sp_rescue_sp = sp_rescue_mark[sp_exc_top];
+#line 826 "app/wifi_status.rb"
+                  if (sp_unwind_kind == SP_UNWIND_NONE) {
+#line 826 "app/wifi_status.rb"
+                    if (strcmp((const char *)sp_last_exc_cls, "FiberKillSignal") == 0) sp_raise_cls("FiberKillSignal", sp_exc_msg[sp_exc_top]);
+#line 826 "app/wifi_status.rb"
+                    else {
+#line 826 "app/wifi_status.rb"
+                      const char *_rcls_356 = (const char *)sp_last_exc_cls; (void)_rcls_356;
+#line 826 "app/wifi_status.rb"
+                      const char *_rmsg_356 = sp_exc_msg[sp_exc_top]; (void)_rmsg_356;
+#line 826 "app/wifi_status.rb"
+                      if (sp_exc_cls_matches(_rcls_356, "StandardError")) {
+#line 826 "app/wifi_status.rb"
+                        sp_Exception *_ce_356 = sp_exc_obj[sp_exc_top] ? (sp_Exception *)sp_exc_obj[sp_exc_top] : sp_exc_new_for_catch(_rcls_356, _rmsg_356);
+#line 826 "app/wifi_status.rb"
+                        sp_rescue_push((void *)_ce_356);
+#line 826 "app/wifi_status.rb"
+                        if (_ce_356->backtrace == NULL) { sp_StrArray *_bt = sp_backtrace_captured(); sp_gc_wb((void *)_ce_356); _ce_356->backtrace = _bt; }
+#line 826 "app/wifi_status.rb"
+                        if (!_ce_356->cause) { sp_gc_wb((void *)_ce_356); _ce_356->cause = (sp_Exception *)sp_pending_cause; } sp_pending_cause = NULL;
+#line 828 "app/wifi_status.rb"
+                        0;
+#line 828 "app/wifi_status.rb"
+                        sp_rescue_sp--;
+#line 828 "app/wifi_status.rb"
+                      }
+#line 828 "app/wifi_status.rb"
+                      else {
+#line 828 "app/wifi_status.rb"
+                        sp_pending_exc_obj = sp_exc_obj[sp_exc_top]; sp_bt_keep = 1;
+#line 828 "app/wifi_status.rb"
+                        sp_raise_cls(_rcls_356, _rmsg_356);
+#line 828 "app/wifi_status.rb"
+                      }
+#line 828 "app/wifi_status.rb"
+                    }
+#line 828 "app/wifi_status.rb"
+                  }
+#line 828 "app/wifi_status.rb"
+                  if (sp_unwind_kind != SP_UNWIND_NONE) sp_unwind_resume();
+#line 828 "app/wifi_status.rb"
+                }
+#line 830 "app/wifi_status.rb"
+                { const char *_ps = (const char *)(({ sp_int _t357 = lv_loop_count; size_t _cap358 = 44UL; char *_t358 = sp_str_alloc_raw(_cap358 + 1); char *_t359 = _t358; memcpy(_t359, "[", 1); _t359 += 1; _t359 = sp_w_int_plain(_t359, _t357); memcpy(_t359, "] OTA reboot requested", 22); _t359 += 22; *_t359 = 0; sp_str_set_len(_t358, (size_t)(_t359 - _t358)); (const char *)_t358; })); sp_puts_str_line(_ps); }
+#line 831 "app/wifi_status.rb"
+                ((sp_int)(({ int _b361_0 = ((int)(100LL)); int _b361_r; sp_native_enter(); _b361_r = sp_ffi_f10_esp32_delay_ms(_b361_0); sp_native_leave(); _b361_r; })));
+#line 832 "app/wifi_status.rb"
+                ((sp_int)(sp_ffi_f28_esp32_ota_reboot()));
+#line 833 "app/wifi_status.rb"
+                sp_exc_top -= 1; continue;
+#line 833 "app/wifi_status.rb"
+              }
+#line 833 "app/wifi_status.rb"
+            }
+#line 833 "app/wifi_status.rb"
+          }
+#line 836 "app/wifi_status.rb"
+          lv_mv = ((sp_int)(sp_ffi_f1_esp32_adc_read_mv()));
+#line 837 "app/wifi_status.rb"
+          lv_cell_v__bp1561 = ((lv_mv >= 0LL) ? ({ double _t364 = (((double)(sp_int_mul(lv_mv, cst_DIVIDER)) / 1000.0)); double _r = sp_float_prec_op(_t364, 2, SP_PREC_ROUND); (_t364 != 0.0 && _r == 0.0) ? 0.0 : _r; }) : 0.0);
+#line 839 "app/wifi_status.rb"
+          lv_time_s__bp1561 = ((char *)_fzl_46.d);
+#line 840 "app/wifi_status.rb"
+          if ((((sp_int)(sp_ffi_f14_esp32_sntp_synced())) != 0LL)) {
+#line 841 "app/wifi_status.rb"
+            lv_rc = ((sp_int)(sp_ffi_f15_esp32_time_utc(((void *)(uintptr_t)(lv_time_buf)), ((int)(24LL)))));
+#line 842 "app/wifi_status.rb"
+            lv_time_s__bp1561 = ((lv_rc == 0LL) ? sp_str_strip(sp_str_delete(lv_time_buf, ((char *)_fzl_17.d))) : ((char *)_fzl_47.d));
+#line 842 "app/wifi_status.rb"
+          }
+#line 844 "app/wifi_status.rb"
+          lv_body = sp_rb_status_page(lv_ssid__bp1561, lv_rssi__bp1561, lv_chan__bp1561, lv_ip, (lv_led != 0LL), lv_cell_v__bp1561, lv_time_s__bp1561, lv_slot_s__bp1561, lv_ota_state);
+#line 846 "app/wifi_status.rb"
+          const char * _t370 = ({ sp_int _t367 = sp_str_bytesize_m(lv_body); size_t _cap368 = 102UL; char *_t368 = sp_str_alloc_raw(_cap368 + 1); char *_t369 = _t368; memcpy(_t369, "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n", 42); _t369 += 42; memcpy(_t369, "Content-Length: ", 16); _t369 += 16; _t369 = sp_w_int_plain(_t369, _t367); memcpy(_t369, "\r\nConnection: close\r\n\r\n", 23); _t369 += 23; *_t369 = 0; sp_str_set_len(_t368, (size_t)(_t369 - _t368)); (const char *)_t368; }); SP_GC_ROOT(_t370);
+#line 846 "app/wifi_status.rb"
+          ({ sp_File *_t371 = sp_poly_as_io(lv_client__bp1561, "write"); sp_File_write_bin(_t371, _t370); });
+#line 848 "app/wifi_status.rb"
+          ({ sp_File *_t372 = sp_poly_as_io(lv_client__bp1561, "write"); sp_File_write_bin(_t372, lv_body); });
+#line 849 "app/wifi_status.rb"
+          ({ sp_RbVal _t374 = lv_client__bp1561; SP_GC_ROOT_RBVAL(_t374); _t374.tag == SP_TAG_OBJ && _t374.cls_id == SP_BUILTIN_QUEUE ? ((void)sp_Queue_close((sp_queue *)_t374.v.p), _t374) : _t374.tag == SP_TAG_OBJ && _t374.cls_id == SP_BUILTIN_DIR ? ((void)sp_Dir_close((sp_Dir *)_t374.v.p), sp_box_nil()) : ({ sp_File *_t373 = sp_poly_as_io(_t374, "close"); (void)sp_File_close(_t373); sp_box_nil(); }); });
+#line 856 "app/wifi_status.rb"
+          ((sp_int)(sp_ffi_f20_esp32_gc_step()));
+#line 857 "app/wifi_status.rb"
+          { const char *_ps = (const char *)(({ sp_int _t376 = lv_loop_count; const char *_t377 = sp_str_or_empty(sp_StrArray_get(sp_str_split_drop_trailing(lv_req, ((char *)_fzl_11.d)), 0LL)); SP_GC_ROOT(_t377); size_t _l377 = sp_str_byte_len(_t377); size_t _cap378 = 32UL + _l377; char *_t378 = sp_str_alloc_raw(_cap378 + 1); char *_t379 = _t378; int _e380 = 0; memcpy(_t379, "[", 1); _t379 += 1; _t379 = sp_w_int_plain(_t379, _t376); _e380 = sp_str_enc_step_i(_e380, _t378, (size_t)(_t379 - _t378), "] served: ", 10, 0); memcpy(_t379, "] served: ", 10); _t379 += 10; _e380 = sp_str_enc_step_i(_e380, _t378, (size_t)(_t379 - _t378), _t377, _l377, sp_str_is_binary(_t377)); memcpy(_t379, _t377, _l377); _t379 += _l377; *_t379 = 0; sp_str_set_len(_t378, (size_t)(_t379 - _t378)); if (_e380 == 1) sp_str_mark_binary(_t378); (const char *)_t378; })); sp_puts_str_line(_ps); }
+#line 857 "app/wifi_status.rb"
+          sp_exc_top--;
+#line 857 "app/wifi_status.rb"
+        }
+#line 857 "app/wifi_status.rb"
+        else {
+#line 857 "app/wifi_status.rb"
+          sp_exc_top--;
+#line 857 "app/wifi_status.rb"
+          sp_gc_nroots = sp_exc_rootmark[sp_exc_top]; sp_rescue_sp = sp_rescue_mark[sp_exc_top];
+#line 857 "app/wifi_status.rb"
+          if (sp_unwind_kind == SP_UNWIND_NONE) {
+#line 857 "app/wifi_status.rb"
+            if (strcmp((const char *)sp_last_exc_cls, "FiberKillSignal") == 0) sp_raise_cls("FiberKillSignal", sp_exc_msg[sp_exc_top]);
+#line 857 "app/wifi_status.rb"
+            else {
+#line 857 "app/wifi_status.rb"
+              const char *_rcls_381 = (const char *)sp_last_exc_cls; (void)_rcls_381;
+#line 857 "app/wifi_status.rb"
+              const char *_rmsg_381 = sp_exc_msg[sp_exc_top]; (void)_rmsg_381;
+#line 857 "app/wifi_status.rb"
+              if (sp_exc_is_standard_error(_rcls_381)) {
+#line 857 "app/wifi_status.rb"
+                sp_Exception *_ce_381 = sp_exc_obj[sp_exc_top] ? (sp_Exception *)sp_exc_obj[sp_exc_top] : sp_exc_new_for_catch(_rcls_381, _rmsg_381);
+#line 857 "app/wifi_status.rb"
+                sp_rescue_push((void *)_ce_381);
+#line 857 "app/wifi_status.rb"
+                if (_ce_381->backtrace == NULL) { sp_StrArray *_bt = sp_backtrace_captured(); sp_gc_wb((void *)_ce_381); _ce_381->backtrace = _bt; }
+#line 857 "app/wifi_status.rb"
+                if (!_ce_381->cause) { sp_gc_wb((void *)_ce_381); _ce_381->cause = (sp_Exception *)sp_pending_cause; } sp_pending_cause = NULL;
+#line 857 "app/wifi_status.rb"
+                lv_e__bp1561 = _ce_381;
+#line 861 "app/wifi_status.rb"
+                sp_Exception *_t383 = lv_e__bp1561;
+#line 861 "app/wifi_status.rb"
+                sp_Exception *_t385 = lv_e__bp1561;
+#line 861 "app/wifi_status.rb"
+                { const char *_ps = (const char *)(({ sp_int _t382 = lv_loop_count; const char *_t384 = sp_class_to_s(((sp_Class){0, _t383 ? sp_exc_class_name(_t383) : SPL("NilClass")})); SP_GC_ROOT(_t384); size_t _l384 = sp_str_byte_len(_t384); const char *_t386 = sp_str_or_empty((_t385 ? sp_exc_message(_t385) : sp_str_empty)); SP_GC_ROOT(_t386); size_t _l386 = sp_str_byte_len(_t386); size_t _cap387 = 39UL + _l384 + _l386; char *_t387 = sp_str_alloc_raw(_cap387 + 1); char *_t388 = _t387; int _e389 = 0; memcpy(_t388, "[", 1); _t388 += 1; _t388 = sp_w_int_plain(_t388, _t382); _e389 = sp_str_enc_step_i(_e389, _t387, (size_t)(_t388 - _t387), "] client error: ", 16, 0); memcpy(_t388, "] client error: ", 16); _t388 += 16; _e389 = sp_str_enc_step_i(_e389, _t387, (size_t)(_t388 - _t387), _t384, _l384, sp_str_is_binary(_t384)); memcpy(_t388, _t384, _l384); _t388 += _l384; _e389 = sp_str_enc_step_i(_e389, _t387, (size_t)(_t388 - _t387), " ", 1, 0); memcpy(_t388, " ", 1); _t388 += 1; _e389 = sp_str_enc_step_i(_e389, _t387, (size_t)(_t388 - _t387), _t386, _l386, sp_str_is_binary(_t386)); memcpy(_t388, _t386, _l386); _t388 += _l386; *_t388 = 0; sp_str_set_len(_t387, (size_t)(_t388 - _t387)); if (_e389 == 1) sp_str_mark_binary(_t387); (const char *)_t387; })); sp_puts_str_line(_ps); }
+#line 862 "app/wifi_status.rb"
+                sp_exc_check_depth();
+#line 862 "app/wifi_status.rb"
+                sp_exc_rootmark[sp_exc_top] = sp_gc_nroots; sp_rescue_mark[sp_exc_top] = sp_rescue_sp;
+#line 862 "app/wifi_status.rb"
+                sp_exc_msg[sp_exc_top] = 0; sp_exc_obj[sp_exc_top] = 0; sp_exc_top++;
+#line 862 "app/wifi_status.rb"
+                if (setjmp(sp_exc_stack[sp_exc_top-1]) == 0) {
+#line 863 "app/wifi_status.rb"
+                  ({ sp_RbVal _t392 = lv_client__bp1561; SP_GC_ROOT_RBVAL(_t392); _t392.tag == SP_TAG_OBJ && _t392.cls_id == SP_BUILTIN_QUEUE ? ((void)sp_Queue_close((sp_queue *)_t392.v.p), _t392) : _t392.tag == SP_TAG_OBJ && _t392.cls_id == SP_BUILTIN_DIR ? ((void)sp_Dir_close((sp_Dir *)_t392.v.p), sp_box_nil()) : ({ sp_File *_t391 = sp_poly_as_io(_t392, "close"); (void)sp_File_close(_t391); sp_box_nil(); }); });
+#line 863 "app/wifi_status.rb"
+                  sp_exc_top--;
+#line 863 "app/wifi_status.rb"
+                }
+#line 863 "app/wifi_status.rb"
+                else {
+#line 863 "app/wifi_status.rb"
+                  sp_exc_top--;
+#line 863 "app/wifi_status.rb"
+                  sp_gc_nroots = sp_exc_rootmark[sp_exc_top]; sp_rescue_sp = sp_rescue_mark[sp_exc_top];
+#line 863 "app/wifi_status.rb"
+                  if (sp_unwind_kind == SP_UNWIND_NONE) {
+#line 863 "app/wifi_status.rb"
+                    if (strcmp((const char *)sp_last_exc_cls, "FiberKillSignal") == 0) sp_raise_cls("FiberKillSignal", sp_exc_msg[sp_exc_top]);
+#line 863 "app/wifi_status.rb"
+                    else {
+#line 863 "app/wifi_status.rb"
+                      const char *_rcls_393 = (const char *)sp_last_exc_cls; (void)_rcls_393;
+#line 863 "app/wifi_status.rb"
+                      const char *_rmsg_393 = sp_exc_msg[sp_exc_top]; (void)_rmsg_393;
+#line 863 "app/wifi_status.rb"
+                      if (sp_exc_cls_matches(_rcls_393, "StandardError")) {
+#line 863 "app/wifi_status.rb"
+                        sp_Exception *_ce_393 = sp_exc_obj[sp_exc_top] ? (sp_Exception *)sp_exc_obj[sp_exc_top] : sp_exc_new_for_catch(_rcls_393, _rmsg_393);
+#line 863 "app/wifi_status.rb"
+                        sp_rescue_push((void *)_ce_393);
+#line 863 "app/wifi_status.rb"
+                        if (_ce_393->backtrace == NULL) { sp_StrArray *_bt = sp_backtrace_captured(); sp_gc_wb((void *)_ce_393); _ce_393->backtrace = _bt; }
+#line 863 "app/wifi_status.rb"
+                        if (!_ce_393->cause) { sp_gc_wb((void *)_ce_393); _ce_393->cause = (sp_Exception *)sp_pending_cause; } sp_pending_cause = NULL;
+#line 865 "app/wifi_status.rb"
+                        0;
+#line 865 "app/wifi_status.rb"
+                        sp_rescue_sp--;
+#line 865 "app/wifi_status.rb"
+                      }
+#line 865 "app/wifi_status.rb"
+                      else {
+#line 865 "app/wifi_status.rb"
+                        sp_pending_exc_obj = sp_exc_obj[sp_exc_top]; sp_bt_keep = 1;
+#line 865 "app/wifi_status.rb"
+                        sp_raise_cls(_rcls_393, _rmsg_393);
+#line 865 "app/wifi_status.rb"
+                      }
+#line 865 "app/wifi_status.rb"
+                    }
+#line 865 "app/wifi_status.rb"
+                  }
+#line 865 "app/wifi_status.rb"
+                  if (sp_unwind_kind != SP_UNWIND_NONE) sp_unwind_resume();
+#line 865 "app/wifi_status.rb"
+                }
+#line 865 "app/wifi_status.rb"
+                sp_rescue_sp--;
+#line 865 "app/wifi_status.rb"
+              }
+#line 865 "app/wifi_status.rb"
+              else {
+#line 865 "app/wifi_status.rb"
+                sp_pending_exc_obj = sp_exc_obj[sp_exc_top]; sp_bt_keep = 1;
+#line 865 "app/wifi_status.rb"
+                sp_raise_cls(_rcls_381, _rmsg_381);
+#line 865 "app/wifi_status.rb"
+              }
+#line 865 "app/wifi_status.rb"
+            }
+#line 865 "app/wifi_status.rb"
+          }
+#line 865 "app/wifi_status.rb"
+          if (sp_unwind_kind != SP_UNWIND_NONE) sp_unwind_resume();
+#line 865 "app/wifi_status.rb"
+        }
+#line 865 "app/wifi_status.rb"
+      }
+#line 872 "app/wifi_status.rb"
+      if ((sp_imod(lv_loop_count, 50LL) == 0LL)) {
+#line 873 "app/wifi_status.rb"
+        lv_mv = ((sp_int)(sp_ffi_f1_esp32_adc_read_mv()));
+#line 874 "app/wifi_status.rb"
+        if ((lv_mv >= 0LL)) {
+#line 875 "app/wifi_status.rb"
+          { const char *_ps = (const char *)(({ sp_int _t395 = lv_loop_count; const char *_t397 = sp_float_opt_to_s(sp_ofloat_of(({ double _t396 = (((double)(sp_int_mul(lv_mv, cst_DIVIDER)) / 1000.0)); double _r = sp_float_prec_op(_t396, 2, SP_PREC_ROUND); (_t396 != 0.0 && _r == 0.0) ? 0.0 : _r; }))); SP_GC_ROOT(_t397); size_t _l397 = sp_str_byte_len(_t397); sp_int _t399 = ((sp_int)(sp_ffi_f16_esp32_heap_free())); sp_int _t401 = ((sp_int)(sp_ffi_f17_esp32_heap_min_free())); sp_int _t403 = ((sp_int)(sp_ffi_f18_esp32_heap_largest_block())); size_t _cap404 = 122UL + _l397; char *_t404 = sp_str_alloc_raw(_cap404 + 1); char *_t405 = _t404; int _e406 = 0; memcpy(_t405, "[", 1); _t405 += 1; _t405 = sp_w_int_plain(_t405, _t395); _e406 = sp_str_enc_step_i(_e406, _t404, (size_t)(_t405 - _t404), "] idle; cell ", 13, 0); memcpy(_t405, "] idle; cell ", 13); _t405 += 13; _e406 = sp_str_enc_step_i(_e406, _t404, (size_t)(_t405 - _t404), _t397, _l397, sp_str_is_binary(_t397)); memcpy(_t405, _t397, _l397); _t405 += _l397; _e406 = sp_str_enc_step_i(_e406, _t404, (size_t)(_t405 - _t404), "V ", 2, 0); memcpy(_t405, "V ", 2); _t405 += 2; _e406 = sp_str_enc_step_i(_e406, _t404, (size_t)(_t405 - _t404), "heap ", 5, 0); memcpy(_t405, "heap ", 5); _t405 += 5; _t405 = sp_w_int(_t405, _t399); _e406 = sp_str_enc_step_i(_e406, _t404, (size_t)(_t405 - _t404), " (min ", 6, 0); memcpy(_t405, " (min ", 6); _t405 += 6; _t405 = sp_w_int(_t405, _t401); _e406 = sp_str_enc_step_i(_e406, _t404, (size_t)(_t405 - _t404), ", ", 2, 0); memcpy(_t405, ", ", 2); _t405 += 2; _e406 = sp_str_enc_step_i(_e406, _t404, (size_t)(_t405 - _t404), "largest ", 8, 0); memcpy(_t405, "largest ", 8); _t405 += 8; _t405 = sp_w_int(_t405, _t403); _e406 = sp_str_enc_step_i(_e406, _t404, (size_t)(_t405 - _t404), ")", 1, 0); memcpy(_t405, ")", 1); _t405 += 1; *_t405 = 0; sp_str_set_len(_t404, (size_t)(_t405 - _t404)); if (_e406 == 1) sp_str_mark_binary(_t404); (const char *)_t404; })); sp_puts_str_line(_ps); }
+#line 875 "app/wifi_status.rb"
+        }
+#line 884 "app/wifi_status.rb"
+        ((sp_int)(sp_ffi_f20_esp32_gc_step()));
+#line 885 "app/wifi_status.rb"
+        ((sp_int)(({ int _b409_0 = ((int)(20LL)); int _b409_r; sp_native_enter(); _b409_r = sp_ffi_f10_esp32_delay_ms(_b409_0); sp_native_leave(); _b409_r; })));
+#line 885 "app/wifi_status.rb"
+      }
+#line 885 "app/wifi_status.rb"
+      else {
+#line 887 "app/wifi_status.rb"
+        ((sp_int)(({ int _b411_0 = ((int)(20LL)); int _b411_r; sp_native_enter(); _b411_r = sp_ffi_f10_esp32_delay_ms(_b411_0); sp_native_leave(); _b411_r; })));
+#line 887 "app/wifi_status.rb"
+      }
+#line 889 "app/wifi_status.rb"
+      lv_loop_count = (sp_int_add(lv_loop_count, 1LL));
+#line 889 "app/wifi_status.rb"
+    }
+#line 889 "app/wifi_status.rb"
+    sp_exc_top--;
+#line 889 "app/wifi_status.rb"
+  }
+#line 889 "app/wifi_status.rb"
+  else {
+#line 889 "app/wifi_status.rb"
+    sp_exc_top--;
+#line 889 "app/wifi_status.rb"
+    sp_gc_nroots = _gcb207;
+#line 889 "app/wifi_status.rb"
+    if (sp_unwind_kind != SP_UNWIND_NONE) sp_unwind_resume();
+#line 889 "app/wifi_status.rb"
+    if (!sp_exc_cls_matches((const char *)sp_last_exc_cls, "StopIteration")) { sp_pending_exc_obj = sp_exc_obj[sp_exc_top]; sp_raise_cls(sp_exc_cls[sp_exc_top], sp_exc_msg[sp_exc_top]); }
+#line 889 "app/wifi_status.rb"
+  }
+#line 598 "/home/tomek/spinel-esp32-pr2/vendor/spinel/builtins/enumerable.rb"
+#line 129 "/home/tomek/spinel-esp32-pr2/vendor/spinel/builtins/comparable.rb"
+  _sp_main_rc = 0;
+#line 129 "/home/tomek/spinel-esp32-pr2/vendor/spinel/builtins/comparable.rb"
+  sp_fin_run_exit();
+#line 129 "/home/tomek/spinel-esp32-pr2/vendor/spinel/builtins/comparable.rb"
+}
+#line 129 "/home/tomek/spinel-esp32-pr2/vendor/spinel/builtins/comparable.rb"
 int main(int argc,char**argv){
-#line 129 "/home/tomek/spinel-esp32/vendor/spinel/builtins/comparable.rb"
+#line 129 "/home/tomek/spinel-esp32-pr2/vendor/spinel/builtins/comparable.rb"
   _sp_main_argc = argc; _sp_main_argv = argv;
-#line 129 "/home/tomek/spinel-esp32/vendor/spinel/builtins/comparable.rb"
+#line 129 "/home/tomek/spinel-esp32-pr2/vendor/spinel/builtins/comparable.rb"
   sp_main_stack_run(_sp_main_body);
-#line 129 "/home/tomek/spinel-esp32/vendor/spinel/builtins/comparable.rb"
+#line 129 "/home/tomek/spinel-esp32-pr2/vendor/spinel/builtins/comparable.rb"
   return _sp_main_rc;
-#line 129 "/home/tomek/spinel-esp32/vendor/spinel/builtins/comparable.rb"
+#line 129 "/home/tomek/spinel-esp32-pr2/vendor/spinel/builtins/comparable.rb"
 }
