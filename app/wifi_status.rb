@@ -46,10 +46,21 @@ module ESP32
     #include "stdint.h"
     #include "errno.h"
 
-    /* ---- battery: GPIO2 = ADC1_CH2 on ESP32-C3 (NOT CH0; CH0 is GPIO0,
-       a floating Grove pin -- the M4 under-read bug: CH0 drifted ~1.1-1.3V
-       while the real divider output sat on CH2). Divider 2:1 (100k/100k),
-       same as battery.rb ---- */
+    /* ---- battery ADC. Channel and calibration scheme differ per target:
+       - ESP32-C3: GPIO2 = ADC1_CH2 (NOT CH0; CH0 is GPIO0, a floating Grove
+         pin -- the M4 under-read bug: CH0 drifted ~1.1-1.3V while the real
+         divider output sat on CH2). Calibrated by the per-chip eFuse
+         curve-fitting scheme.
+       - Classic ESP32 (T-Display): battery divider is GPIO36 = ADC1_CH0, and
+         the chip has no curve-fitting scheme -- only line fitting with a
+         default reference. The Ruby-side pin constant is board-specific;
+         this C only needs to compile and read correctly on both.
+       Divider 2:1 (100k/100k), same as battery.rb ---- */
+    #if CONFIG_IDF_TARGET_ESP32
+      #define WS_ADC_CHANNEL ADC_CHANNEL_0   /* GPIO36, ADC1_CH0 */
+    #else
+      #define WS_ADC_CHANNEL ADC_CHANNEL_2   /* GPIO2,  ADC1_CH2 */
+    #endif
     static adc_oneshot_unit_handle_t ws_adc_unit = NULL;
     static adc_cali_handle_t ws_adc_cali = NULL;
     static int ws_adc_inited = 0;
@@ -63,22 +74,31 @@ module ESP32
         adc_oneshot_chan_cfg_t chan = {
             .bitwidth = ADC_BITWIDTH_DEFAULT, .atten = ADC_ATTEN_DB_12,
         };
-        if (adc_oneshot_config_channel(ws_adc_unit, ADC_CHANNEL_2, &chan) != ESP_OK)
+        if (adc_oneshot_config_channel(ws_adc_unit, WS_ADC_CHANNEL, &chan) != ESP_OK)
             return -2;
+    #if CONFIG_IDF_TARGET_ESP32
+        adc_cali_line_fitting_config_t cc = {
+            .unit_id = ADC_UNIT_1,
+            .bitwidth = ADC_BITWIDTH_DEFAULT, .atten = ADC_ATTEN_DB_12,
+            .default_vref = 1100, /* mV; used only if eFuse VREF is unburnt */
+        };
+        adc_cali_create_scheme_line_fitting(&cc, &ws_adc_cali); /* optional */
+    #else
         adc_cali_curve_fitting_config_t cc = {
-            .unit_id = ADC_UNIT_1, .chan = ADC_CHANNEL_2,
+            .unit_id = ADC_UNIT_1, .chan = WS_ADC_CHANNEL,
             .bitwidth = ADC_BITWIDTH_DEFAULT, .atten = ADC_ATTEN_DB_12,
         };
         adc_cali_create_scheme_curve_fitting(&cc, &ws_adc_cali); /* optional */
+    #endif
         ws_adc_inited = 1;
         return 0;
     }
 
-    /* Calibrated GPIO2 pin voltage in mV, or negative on failure. */
+    /* Calibrated battery pin voltage in mV, or negative on failure. */
     int esp32_adc_read_mv(void) {
         if (!ws_adc_inited) return -1;
         int raw = -1;
-        if (adc_oneshot_read(ws_adc_unit, ADC_CHANNEL_2, &raw) != ESP_OK) return -2;
+        if (adc_oneshot_read(ws_adc_unit, WS_ADC_CHANNEL, &raw) != ESP_OK) return -2;
         if (ws_adc_cali) {
             int mv = -1;
             if (adc_cali_raw_to_voltage(ws_adc_cali, raw, &mv) == ESP_OK) return mv;

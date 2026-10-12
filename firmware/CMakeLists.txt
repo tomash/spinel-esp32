@@ -3,7 +3,9 @@
 # Pipeline: tools/build-app.sh <app>.rb --target=esp32 emits main/app.c
 # (spinel infers 32-bit ints by probing the cross gcc via --cc=), then
 # `idf.py set-target esp32c3 && idf.py build` links it against the
-# prebuilt RT archive (build/rt-riscv32/libspinel_rt_esp32.a, rv32imc).
+# prebuilt RT archive (build/rt-riscv32/libspinel_rt_esp32.a, rv32imc) --
+# or, for IDF_TARGET=esp32, build/rt-esp32 (xtensa, T-Display). The
+# target->archive mapping lives in spinel_target.cmake.
 #
 # The Ruby body runs on the IDF main task's stack: the shim mmap is a
 # MAP_FAILED stub, so sp_main_stack_run's fallback ("run it where we are")
@@ -18,8 +20,10 @@ cmake_minimum_required(VERSION 3.16)
 # across a working-tree rebuild).
 set(PROJECT_VER "0.7.0")
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/spinel_target.cmake)
 project(spinel_esp32_app C CXX ASM)
 
-# Prebuilt spinel RT (built by tools/build-rt.sh for rv32imc, SP_NO_SIGNALS):
-# a plain imported static library; the app's link line adds it after main.
-add_prebuilt_library(spinel_rt ${CMAKE_CURRENT_LIST_DIR}/../build/rt-riscv32/libspinel_rt_esp32.a)
+# Prebuilt spinel RT (built by tools/build-rt.sh; SP_NO_SIGNALS): a plain
+# imported static library; the app's link line adds it after main. The
+# archive path is target-mapped in spinel_target.cmake.
+add_prebuilt_library(spinel_rt "${SPINEL_RT_ARCHIVE}")
