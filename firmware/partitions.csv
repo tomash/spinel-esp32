@@ -1,4 +1,10 @@
-# Name,   Type, SubType, Offset,  Size,     Flags
-nvs,      data, nvs,     0x9000,  0x006000,
-phy_init, data, phy,     0xf000,  0x001000,
-factory,  app,  factory, 0x10000, 0x2F0000,
+# Name,   Type, SubType,  Offset,   Size,     Flags
+# M6: OTA layout -- two equal 1.8125 MB app slots + 8 KB otadata.
+# Replaces the M2 single factory slot. Total ends at 0x3C2000, well inside
+# the 4 MB flash. nvs keeps its offset (0x9000) so WiFi credentials survive
+# the one-time re-partition serial reflash.
+nvs,      data, nvs,     0x9000,   0x006000,
+phy_init, data, phy,     0xf000,   0x001000,
+otadata,  data, ota,     0x10000,  0x002000,
+ota_0,    app,  ota_0,   0x20000,  0x1D0000,
+ota_1,    app,  ota_1,   0x1F0000, 0x1D0000,

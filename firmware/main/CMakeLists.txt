@@ -8,7 +8,7 @@
 # FreeRTOS do not provide.
 
 idf_component_register(
-    SRCS "sp_app_adapter.c" "sp_lwip_compat.c" "app.c"
+    SRCS "sp_app_adapter.c" "sp_lwip_compat.c" "sp_ota_adapter.c" "app.c"
     INCLUDE_DIRS "." "../../shim/esp32/include" "../../vendor/spinel/lib" "../../vendor/spinel/lib/regexp"
     # M4: esp_wifi STA + nvs + netif + event loop + adc driver. The
     # prebuilt RT archive cannot carry these; the app TU (FFI adapters)
@@ -18,7 +18,7 @@ idf_component_register(
     # M5a: mdns is the managed component espressif/mdns (idf_component.yml)
     # -- not in the IDF v5.5 component tree; the component manager fetches
     # it at configure time into build/managed_components.
-    REQUIRES esp_wifi nvs_flash esp_netif esp_event esp_adc esp_driver_gpio lwip mdns
+    REQUIRES esp_wifi nvs_flash esp_netif esp_event esp_adc esp_driver_gpio lwip mdns app_update
 )
 
 # Link the prebuilt spinel RT after this component's objects. Imported
@@ -72,6 +72,9 @@ target_compile_definitions(${COMPONENT_LIB} PRIVATE
     SP_GC_PINNED_MAX=1024
     SP_ALLOC_STATS=512
     SP_STR_SHAPE_MAX=512
+    SP_DYN_SYMS_MAX=256
+    SP_EXC_STACK_MAX=8
+    SP_CATCH_STACK_MAX=8
     SP_NO_SIGNALS
     __ESP32_SHIM__
     SP_INT_OVERFLOW_MODE_RAISE)

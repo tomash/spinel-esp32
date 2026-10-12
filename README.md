@@ -206,13 +206,36 @@ vendor/       git submodules (spinel)
 
 ## Status
 
-See `docs/plan.md`. M0–M5 complete: host pipeline, cross runtime, hardware demos
+See `docs/plan.md`. M0–M6 complete: host pipeline, cross runtime, hardware demos
 (GPIO/ADC/I2C), WiFi STA + web server in pure Ruby — all verified on the
 T-OI Plus, including the `/led/toggle` endpoint over the LAN and calibrated
 battery voltage matching the multimeter. M5 adds mDNS
 (`http://spinel-esp32.local/`), NTP wall-clock on the status page, GC
 thresholds tuned for the C3's 16 KB DRAM heap, and socket-error resilience —
-verified under an RST storm with zero reboots. Next: M6 (OTA updates).
+verified under an RST storm with zero reboots.
+
+M6 (OTA updates) is done end-to-end: `GET /ota/check`, `POST|GET /ota/start`
+(streams the new image from a LAN HTTP server into the inactive slot with
+sequential erase, heap-safe ~1.27 MB transfer), `GET /ota/status`,
+`GET /ota/reboot`, with bootloader rollback safety (the new image is
+auto-rolled back unless the running app proves itself by serving a request).
+Two real bugs were found and fixed on the way:
+
+- **connect() EIO from unaligned sockaddr** — lwIP's connect guard rejects
+  a GC-heap String pointer that isn't 4-byte aligned (ERR_ARG → EIO) before
+  any packet is sent. Fixed in `vendor/spinel` `lib/sp_io.c`
+  (`sp_sock_connect_nb_sa`): copy the sockaddr through an aligned
+  `struct sockaddr_storage` local; also reject oversized lengths with
+  EINVAL.
+- **OTA image parsing split the header across reads** — the ESP image
+  header + first segment can straddle a chunk boundary; magic 0xE9
+  checks failed intermittently (magic 20). Fixed in `app/wifi_status.rb`
+  by buffering `hsep` (header bytes) and `rest` separately, and closing
+  the data socket on all exit paths.
+
+Firmware layout: dual OTA slots 0x20000 / 0x1f0000 (0x1d0000 each),
+`firmware/main/sp_ota_adapter.c` wraps esp_ota, partitions in
+`firmware/partitions.csv`. Full story in `docs/plan-m6-ota.md`.
 
 ## Constraints honored
 

@@ -26,3 +26,37 @@ CONFIG_ESP_TASK_WDT_EN=n
 # 10/32 connects in 2s on the same AP. Cost ~10 KB DRAM, we have room.
 CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=10
 CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM=32
+
+# M6: OTA rollback safety. The bootloader boots the new slot only once
+# (ESP_OTA_IMG_NEW -> PENDING_VERIFY); if the app never calls
+# esp_ota_mark_app_valid_cancel_rollback, the next reset rolls back into
+# the previous slot. The Ruby app calls esp32_ota_mark_valid() after the
+# status server has served one successful request (proof of life).
+# CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE requires
+# CONFIG_BOOTLOADER_APP_ANTI_ROLLBACK=n (default; anti-rollback would
+# need secure-version bookkeeping in eFuse).
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+CONFIG_BOOTLOADER_APP_ANTI_ROLLBACK=n
+
+# M6 diagnosis note: LWIP_DEBUG + LWIP_STATS were enabled temporarily to
+# surface lwip_connect's ERR_ARG guard; they cost ~9 KB of internal RAM and
+# starved the board (boot heap 8128 vs 17088 stock; lwip mem fail at 11 s,
+# app froze). Fully stripped in the shipped build.
+
+# M6 BSS knobs: the three spinel limits below live in build-rt.sh
+# (-DSP_DYN_SYMS_MAX=256 -DSP_EXC_STACK_MAX=8 -DSP_CATCH_STACK_MAX=8) and
+# must stay in sync with firmware/CMakeLists.txt (which compiles the RT
+# objects with the same defines). Shrinking them is what reclaimed the
+# boot heap (69 KiB free vs 8 KiB during the EIO hunt); do not bump them
+# without re-checking heap_init in the boot log.
+#
+# Sticky-sdkconfig lesson (M5/M6): idf.py keeps sdkconfig and regenerates
+# only missing keys from .defaults, so a reverted .defaults line does NOT
+# undo a change on an already-configured tree. When backtracking a
+# sdkconfig experiment, edit sdkconfig itself (or delete it) -- not just
+# .defaults. Also pin CONFIG_IDF_TARGET explicitly if the tree ever gets
+# built from a foreign checkout: auto-detect once poisoned sdkconfig and
+# you get ESP32-vs-ESP32-C3 mismatch flash failures.
+# Current shipped build: CONFIG_IDF_TARGET="esp32c3",
+# CONFIG_COMPILER_OPTIMIZATION_SIZE=y (both live in sdkconfig, sizes
+# tracked: instrumented 1299632 B / clean 1269296 B app image).

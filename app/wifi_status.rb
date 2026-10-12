@@ -43,6 +43,8 @@ module ESP32
     #include "esp_heap_caps.h"
     #include "time.h"
     #include "string.h"
+    #include "stdint.h"
+    #include "errno.h"
 
     /* ---- battery: GPIO2 = ADC1_CH2 on ESP32-C3 (NOT CH0; CH0 is GPIO0,
        a floating Grove pin -- the M4 under-read bug: CH0 drifted ~1.1-1.3V
@@ -121,6 +123,13 @@ module ESP32
         strncpy((char *)wc.sta.ssid, ssid, sizeof(wc.sta.ssid) - 1);
         strncpy((char *)wc.sta.password, pass, sizeof(wc.sta.password) - 1);
         wc.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
+        /* M6: keep the radio awake. Default WIFI_PS_MIN_MODELEM with the
+           AP's DTIM 3 / 102.4 ms beacons lets the STA doze ~900 ms; during
+           those dozes the board answers nothing (observed 40-300 ms pings,
+           whole-probe 100% loss bursts, curl 8 s timeouts) even with the
+           heap healthy. WIFI_PS_NONE trades ~30 mA idle for liveness,
+           which matters more for OTA. */
+        esp_wifi_set_ps(WIFI_PS_NONE);
         /* M4 fix: everything below was debugging-era deviations from the
            stock station example (pmf_cfg capable=false, forced 11BGN
            protocol, forced HT20, WIFI_PS_NONE, max TX power) -- the AP
@@ -197,6 +206,12 @@ module ESP32
     int esp32_delay_ms(int ms) {
         vTaskDelay(pdMS_TO_TICKS((uint32_t)ms));
         return 0;
+    }
+
+    /* Free-running millisecond clock (for the non-blocking OTA download
+       loop's idle deadline; wraps after ~49 days -- fine for a soak). */
+    int esp32_millis(void) {
+        return (int)(xTaskGetTickCount() * (1000 / configTICK_RATE_HZ));
     }
 
     /* ---- M5a: mDNS (managed component espressif/mdns) ---- */
@@ -277,6 +292,56 @@ module ESP32
         sp_str_old_threshold  = 8 * 1024;  sp_str_old_threshold_init  = 8 * 1024;
         return 0;
     }
+
+    /* ---- M6: explicit collection pacing (the idle heap-starvation fix) ----
+       The churn trigger alone cannot pace this app: at idle the only
+       garbage is the heartbeat's interpolated puts strings (~260 B/s),
+       so a 4 KB string threshold fires a collection just every ~16 s,
+       and in between the IDF heap bottoms out near 300 B free -- long
+       enough for esp_wifi/lwIP allocations to fail (observed:
+       "wifi:m f null" warnings, ARP stops answering pings, accept
+       starves, /status connects but never answers). sp_gc_collect_request()
+       is the runtime's own GC.start (sp_gc.h:545); in this single-worker
+       build (no SP_THREADS) sp_sched.c routes it straight to
+       sp_gc_collect() and then runs pending finalizers. Calling it every
+       heartbeat bounds the between-collections decay to one heartbeat's
+       churn instead of sixteen seconds' worth. */
+    void sp_gc_collect_request(void);
+    /* sp_str_sweep() (sp_alloc.h:234, libspinel_rt_esp32.a) is the UNGATED
+       string-heap sweep: sp_gc_collect's string hook is installed as
+       sp_str_sweep_gated, which skips the sweep entirely while
+       sp_str_heap_bytes <= sp_str_threshold (sp_alloc.c sp_str_sweep_begin).
+       At idle, live strings stay far below the 4 KB threshold, so the gated
+       hook inside sp_gc_collect reclaims ~nothing and the churn trigger
+       (sp_str_alloc's bytes>threshold test) stays the only string reaper --
+       still every ~16 s. Calling the ungated sp_str_sweep() explicitly (same
+       entry GC.start and shutdown use) reaps both string generations every
+       heartbeat regardless of threshold; it does not retune, so the churn
+       trigger remains as backstop. */
+    void sp_str_sweep(void);
+    int esp32_gc_step(void) {
+        sp_gc_collect_request();
+        sp_str_sweep();
+        return 0;
+    }
+
+    /* ---- M6: OTA flash-write adapters (sp_ota_adapter.c) ----
+       Ruby owns the whole download protocol; C only owns the flash
+       machinery. esp32_ota_write takes the chunk buffer as binstr: the
+       bridge hands the C side the String's own bytes plus the exact
+       length published in sp_ffi_bin_len (the read just before it set
+       that global for its :binstr answer), so NUL bytes inside a 4 KB
+       chunk survive -- strlen would truncate the image at its first
+       0x00 byte. The chunk String is the out-buffer of readpartial's
+       (n, buf) form: each refill reuses the same allocation. */
+    const char *esp32_ota_partition_name(void);
+    int esp32_ota_begin(void);
+    int esp32_ota_check_version(const uint8_t *buf, size_t len);
+    int esp32_ota_write(const uint8_t *buf, size_t len);
+    int esp32_ota_end(int abort);
+    int esp32_ota_running_slot(void);
+    int esp32_ota_mark_valid(void);
+    int esp32_ota_reboot(void);
   C
 
   # LED (kept for reuse across demos)
@@ -308,6 +373,7 @@ module ESP32
   ffi_func :esp32_wifi_ap_info,  [:ptr, :int, :ptr], :int
   ffi_func :esp32_wifi_ip,       [:ptr, :int], :int
   ffi_func :esp32_delay_ms,      [:int], :int, blocking: true
+  ffi_func :esp32_millis,        [], :int
   ffi_func :esp32_mdns_start,    [:str, :str, :str], :int
   ffi_func :esp32_sntp_start,    [], :int
   ffi_func :esp32_sntp_synced,   [], :int
@@ -316,6 +382,16 @@ module ESP32
   ffi_func :esp32_heap_min_free, [], :int
   ffi_func :esp32_heap_largest_block, [], :int
   ffi_func :esp32_gc_tune, [], :int
+  ffi_func :esp32_gc_step, [], :int
+  # M6: OTA flash machinery (C side owns esp_ota_*; Ruby owns the protocol)
+  ffi_func :esp32_ota_partition_name, [], :str
+  ffi_func :esp32_ota_begin,          [], :int
+  ffi_func :esp32_ota_check_version,  [:binstr, :size_t], :int
+  ffi_func :esp32_ota_write,          [:binstr, :size_t], :int
+  ffi_func :esp32_ota_end,            [:int], :int
+  ffi_func :esp32_ota_running_slot,   [], :int
+  ffi_func :esp32_ota_mark_valid,     [], :int
+  ffi_func :esp32_ota_reboot,         [], :int
 end
 
 # ---- buffers for the out-param FFI calls (String allocated in Ruby) ----
@@ -331,9 +407,10 @@ def read_int_le(buf)
   v
 end
 
-def status_page(ssid, rssi, chan, ip, led, cell_v, time_s)
+def status_page(ssid, rssi, chan, ip, led, cell_v, time_s, slot_s, ota)
   led_s  = led ? "on" : "off"
   rssi_s = rssi.nil? ? "?" : "#{rssi}"
+  ot = ota ? "#{ota["phase"]} (#{ota["progress"]} bytes)" : "no attempt this boot"
   <<~HTML
     <!doctype html><html><head><title>spinel-esp32</title></head>
     <body style="font-family:monospace;background:#111;color:#eee;padding:2em">
@@ -346,9 +423,13 @@ def status_page(ssid, rssi, chan, ip, led, cell_v, time_s)
     <tr><td>Channel</td><td>#{chan}</td></tr>
     <tr><td>IP</td><td>#{ip}</td></tr>
     <tr><td>Time (UTC)</td><td>#{time_s}</td></tr>
+    <tr><td>Running slot</td><td>#{slot_s}</td></tr>
+    <tr><td>Last OTA</td><td>#{ot}</td></tr>
     </table>
     <p><a href="/led/toggle" style="background:#eee;color:#111;padding:4px 12px;
        text-decoration:none">Toggle LED (currently #{led_s})</a></p>
+    <p style="color:#999">OTA: /ota/start?url=host:port/spinel.bin &middot;
+       /ota/status &middot; /ota/reboot</p>
     </body></html>
   HTML
 end
@@ -392,6 +473,213 @@ puts "Serving status on 0.0.0.0:#{PORT} (polling loop, no threads)"
 
 led = 1
 loop_count = 0
+
+# ---- M6: OTA download state ----
+# ota_state is a tiny in-process record of the last /ota/start attempt:
+#   nil = nothing attempted this boot;
+#   { "slot" =>, "phase" =>, "progress" =>, "error" => } afterwards.
+# "phase": downloading | sealed | failed. The image only boots on an
+# explicit /ota/reboot (plan stage 3: do not auto-reboot).
+ota_state = nil
+ota_valid_latch = false   # Stage 4: proof-of-life mark-valid, once per boot
+
+def ota_error(client, code, text)
+  client.write "HTTP/1.1 #{code} #{text.split(' ').first}\r\n" \
+               "Content-Type: text/plain\r\nConnection: close\r\n\r\n#{text}\n"
+  client.close
+end
+
+# HTTP GET over spinel's socket layer, streaming straight into the other OTA
+# slot. Memory discipline (plan): one reused String out-buffer for the
+# body -- readpartial(n, buf) refills it in place -- plus small per-step
+# temporaries only. No accumulated body in the Ruby heap, ever.
+#
+# The serving side for tests is `python3 -m http.server` on the LAN
+# (plain HTTP; no TLS in scope). The request is HTTP/1.0-shaped, we
+# parse Content-Length, verify the 0xE9 image magic in the first chunk
+# BEFORE ota_begin, and hand each chunk to the C adapter via one
+# esp32_ota_write(:binstr) call per chunk.
+#
+# Connect goes through the 1-arg Socket#connect_nonblock(sockaddr) path,
+# NOT TCPSocket.new(host, port): sp_io_fdopen_sock hardcodes
+# Errno::ECONNREFUSED for any negative fd, which masks the real lwIP
+# error -- a DNS miss, no-route, or timeout all surfaced as "Connection
+# refused". The 1-arg form calls connect(2) directly and raises the
+# Errno::* class mapped from the true errno (hard errors raise even
+# with exception: false); Socket.sockaddr_in raises SocketError on a
+# failed name lookup before any socket exists.
+def ota_connect(host, port, timeout_ms = 10000)
+  sa = Socket.sockaddr_in(port, host)   # SocketError here on DNS failure
+  sock = nil
+  begin
+    sock = Socket.new(Socket::AF_INET, Socket::SOCK_STREAM, 0)
+    deadline = ESP32.esp32_millis + timeout_ms
+    while true
+      rc = sock.connect_nonblock(sa, exception: false)
+      return sock if rc == 0   # handshake done (or lwIP answered EISCONN -> 0)
+      # rc == :wait_writable: SYN in flight; keep probing. Hard errors
+      # raise Errno::* right here (sp_io.c sp_sock_connect_nb_sa maps
+      # errno -> Errno class even with exception: false).
+      raise "connect deadline (#{timeout_ms} ms)" if ESP32.esp32_millis > deadline
+      ESP32.esp32_delay_ms(50)
+    end
+  rescue => e
+    # M6 leak fix: hard errors raised inside this loop (Errno::* from
+    # connect, or the deadline) left `sock` (fd + lwIP netconn + PCB)
+    # unreachable, and ota_download's ensure saw nil -- each failed
+    # attempt permanently lost one socket (~4 KB of netconn buffers;
+    # observed largest-block 7680 -> 3584 -> 2304 after two attempts).
+    # Close ours before re-raising.
+    puts "ota: ota_connect failed: #{e.class}: #{e.message} (closing fd)"
+    begin
+      sock.close if sock
+    rescue StandardError
+      nil
+    end
+    raise
+  end
+end
+
+def ota_download(host, port, path, force: false)
+  total = nil
+  written = 0
+  begun = false
+  idle_ms = 15000   # no inbound byte for this long -> abort
+  sock = nil
+  begin
+    sock = ota_connect(host, port)
+    # A stalled server must not pin the download forever. lwIP's
+    # SO_RCVTIMEO (0x1006) wants a `struct timeval`, not the bare int
+    # spinel's setsockopt passes, so it fails with EINVAL -- so the
+    # deadline lives in Ruby instead: every read is non-blocking and the
+    # loop aborts when no byte has arrived for idle_ms. The old
+    # slot keeps running on abort.
+    sock.write "GET #{path} HTTP/1.0\r\nHost: #{host}:#{port}\r\n" \
+               "User-Agent: spinel-esp32-ota/1\r\nAccept: */*\r\n\r\n"
+    last_rx = ESP32.esp32_millis
+    # ---- headers: non-blocking poll until \r\n\r\n, bounded ----
+    hdr = ""
+    while !hdr.include?("\r\n\r\n") && hdr.bytesize <= 8192
+      chunk = sock.read_nonblock(512, exception: false)
+      if chunk.nil?
+        raise "no HTTP response (EOF in headers)" if hdr.empty?
+        break
+      elsif chunk == :wait_readable
+        raise "idle timeout in headers" if ESP32.esp32_millis - last_rx > idle_ms
+        ESP32.esp32_delay_ms(10)
+        next
+      end
+      last_rx = ESP32.esp32_millis
+      hdr += chunk
+    end
+    raise "no HTTP response (EOF in headers)" if hdr.empty?
+    # The chunk that completes the headers can carry body bytes after
+    # "\r\n\r\n"; dropping them desynchronises the image stream
+    # (observed: "not an esp image (magic 20)" -- the magic check saw a
+    # byte from deep inside the binary). Split them off and feed them
+    # back as the first body chunk below.
+    hsep = hdr.index("\r\n\r\n")
+    raise "no HTTP response (unterminated headers)" unless hsep
+    rest = hdr[(hsep + 4)..].to_s
+    hdr = hdr[0, hsep + 4]
+    status = hdr.split("\r\n").first.to_s
+    raise "bad status line: #{status.inspect}" unless status.start_with?("HTTP/")
+    code = status.split(" ")[1].to_i
+    raise "server said #{code}" unless code == 200
+    if hdr =~ /Content-Length:\s*(\d+)/i
+      total = $1.to_i
+      raise "bad Content-Length" if total <= 0
+    end
+    # ---- body: 4 KB non-blocking reads straight into ota_write ----
+    first = true
+    while true
+      if first && !rest.empty?
+        # body bytes that arrived with the final header chunk
+        chunk = rest
+        rest = ""
+      else
+        chunk = sock.read_nonblock(4096, exception: false)
+      end
+      if chunk.nil? || chunk == :wait_readable
+        # would-block: the peer owes us bytes. A slow transfer still sends
+        # *something* each tick, so the idle timer resets on every read.
+        if ESP32.esp32_millis - last_rx > idle_ms
+          raise "idle timeout after #{written} bytes"
+        end
+        ESP32.esp32_delay_ms(10)
+        next
+      end
+      last_rx = ESP32.esp32_millis
+      buf = chunk
+      got = chunk.bytesize
+      if first
+        # esp image magic: 0xE9 at offset 0 -- abort BEFORE ota_begin on
+        # anything else (a 404 page must never touch flash). The version
+        # guard reads the app descriptor at offset 32, so accumulate the
+        # first >= 80 bytes (24 image header + 8 segment header + 48
+        # esp_app_desc_t) before checking; a server dribbling the image
+        # out one tiny segment at a time must not trip the guard on a
+        # short first read (native_ota_example's data_read > sizeof(...)
+        # condition, made robust).
+        while buf.bytesize < 80
+          chunk = sock.read_nonblock(4096, exception: false)
+          if chunk.nil? || chunk == :wait_readable
+            raise "EOF before image header" if chunk.nil?
+            raise "idle timeout before image header" if ESP32.esp32_millis - last_rx > idle_ms
+            ESP32.esp32_delay_ms(10)
+            next
+          end
+          last_rx = ESP32.esp32_millis
+          buf += chunk
+        end
+        if buf.getbyte(0) != 0xE9
+          raise "not an esp image (magic #{buf.getbyte(0).to_s(16)})"
+        end
+        # Version guard (native_ota_example): refuse to reflash the
+        # running version, or one that previously failed to prove life
+        # (last-invalid partition). Runs on the first bytes, before
+        # ota_begin, so a refused image never touches flash.
+        rc = ESP32.esp32_ota_check_version(buf, buf.bytesize)
+        raise "version guard refused image (rc #{rc})" if rc != 0 && !force
+        first = false
+        got = buf.bytesize
+      end
+      if !begun
+        rc = ESP32.esp32_ota_begin()
+        raise "ota_begin failed (#{rc})" if rc != 0
+        begun = true
+      end
+      rc = ESP32.esp32_ota_write(buf, got)
+      raise "ota_write failed (#{rc})" if rc != 0
+      written += got
+      break if total && written >= total
+    end
+    raise "truncated: got #{written}, expected #{total}" if total && written < total
+    # got == 0 (EOF) without a known total: accept, ota_end validates
+    # the trailing image checksum anyway.
+    rc = ESP32.esp32_ota_end(0)
+    raise "ota_end failed (#{rc})" if rc != 0
+    { "slot" => ESP32.esp32_ota_partition_name.delete("\0"), "phase" => "sealed",
+      "progress" => written, "error" => nil }
+  rescue => e
+    if begun
+      begin
+        ESP32.esp32_ota_end(1)   # abort: leave the old slot running
+      rescue StandardError
+        nil
+      end
+    end
+    { "slot" => begun ? ESP32.esp32_ota_partition_name.delete("\0") : nil,
+      "phase" => "failed", "progress" => written, "error" => "#{e.class}: #{e.message}" }
+  ensure
+    begin
+      sock.close if sock
+    rescue StandardError
+      nil
+    end
+  end
+end
+
 loop do
   # -- one non-blocking accept per tick --
   # M5c: accept itself can raise -- spinel's exception: false softens
@@ -422,6 +710,8 @@ loop do
       end
     end
     rssi = ESP32.esp32_wifi_ap_info(ssid_buf, 33, chan_buf)
+    run_slot = ESP32.esp32_ota_running_slot()
+    slot_s = run_slot == 0 ? "ota_0" : run_slot == 1 ? "ota_1" : "factory"
     if rssi == -999
       rssi = nil
       chan = 0
@@ -436,10 +726,91 @@ loop do
 
     # -- route: GET /led/toggle flips the LED; anything else serves index --
     path = req.split(" ")[1].to_s
-    if path.start_with?("/led/toggle")
-      led = led == 1 ? 0 : 1
-      ESP32.esp32_led_write(LED_PIN, led)
-      puts "[#{loop_count}] LED toggled -> #{led}"
+
+    # -- M6: serve-path GC checkpoint #1 (after request read) --
+    # The serve burst allocates ~4-5 KB (request parse + status strings +
+    # page build) with no GC checkpoint inside it. On this part ~16 KB stays
+    # free once WiFi/mDNS are up, and the pre-serve floor is ~9-10 KB, so an
+    # unchecked burst bottoms near 1.2 KB and lwIP's TX allocations fail
+    # (observed: "wifi:m f null" exactly at serve time, dropped responses,
+    # ping loss). Checkpointing after the read clears the read/parse garbage
+    # BEFORE the response allocates; the slab is off on ESP32 (shim mmap
+    # answers MAP_FAILED -> sp_slab_on = 0), so freed spinel bytes hit the
+    # IDF heap immediately -- no slab-chunk delay to wait out.
+    ESP32.esp32_gc_step()
+
+    # ---- M6 OTA routes (Stage 4 latch: first served request proves life) ----
+    unless ota_valid_latch
+      ota_valid_latch = true
+      begin
+        ESP32.esp32_ota_mark_valid()
+      rescue => e
+        puts "[#{loop_count}] ota mark_valid error: #{e.class} #{e.message}"
+      end
+    end
+
+    if path.start_with?("/ota/start")
+      # /ota/start?url=192.168.1.x:8000/spinel.bin[&force=1]  (LAN dev)
+      # force=1 skips the version guard (same version as running is
+      # normally refused; the round-trip reflash of an identical build
+      # is a deliberate test case, so it gets an explicit bypass --
+      # mirroring CONFIG_EXAMPLE_SKIP_VERSION_CHECK in the example).
+      q = path.split("?", 2)[1].to_s
+      murl = q =~ /url=([^&]+)/ ? $1 : nil
+      url = murl.to_s
+      force = q.include?("force=1")
+      puts "[#{loop_count}] OTA start: #{url}"
+      if url.empty?
+        ota_error(client, 400, "missing url param")
+      else
+        hostport = url.split("/", 2)[0].to_s
+        upath = "/" + (url.split("/", 2)[1].to_s)
+        colon = hostport.rindex(":")
+        ohost = colon ? hostport[0, colon] : hostport
+        oport = colon ? hostport[colon + 1, hostport.size].to_i : 80
+        oport = 80 if oport == 0
+        # The download owns the client for its whole duration; report
+        # when done. Progress prints to serial as it goes.
+        puts "[#{loop_count}] OTA connecting #{ohost}:#{oport} #{upath}"
+        ota_state = ota_download(ohost, oport, upath, force: force)
+        puts "[#{loop_count}] OTA result: #{ota_state["phase"]} " \
+             "#{ota_state["progress"]}B #{ota_state["error"]}"
+        body = "OTA #{ota_state["phase"]}: #{ota_state["progress"]} bytes " \
+               "#{ota_state["error"] ? "error=#{ota_state["error"]}" : "slot=#{ota_state["slot"]}"}\n"
+        client.write "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n" \
+                     "Content-Length: #{body.bytesize}\r\nConnection: close\r\n\r\n"
+        client.write body
+        client.close
+      end
+      puts "[#{loop_count}] served: #{req.split("\r\n")[0]}"
+      next
+    elsif path.start_with?("/ota/status")
+      slot = ESP32.esp32_ota_running_slot()
+      slot_s = slot == 0 ? "ota_0" : slot == 1 ? "ota_1" : "factory"
+      st = ota_state || { "phase" => "idle", "progress" => 0, "error" => nil, "slot" => nil }
+      body = "running slot: #{slot_s}\nlast ota: #{st["phase"]} " \
+             "(#{st["progress"]} bytes#{st["error"] ? ", #{st["error"]}" : ""})\n" \
+             "reboot pending\n"
+      client.write "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n" \
+                   "Content-Length: #{body.bytesize}\r\nConnection: close\r\n\r\n"
+      client.write body
+      client.close
+      puts "[#{loop_count}] served: #{req.split("\r\n")[0]}"
+      next
+    elsif path.start_with?("/ota/reboot")
+      body = "rebooting\n"
+      client.write "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n" \
+                   "Content-Length: #{body.bytesize}\r\nConnection: close\r\n\r\n"
+      begin
+        client.write body
+        client.close
+      rescue StandardError
+        nil
+      end
+      puts "[#{loop_count}] OTA reboot requested"
+      ESP32.esp32_delay_ms(100)
+      ESP32.esp32_ota_reboot()
+      next
     end
 
     mv = ESP32.esp32_adc_read_mv()
@@ -450,11 +821,19 @@ loop do
       rc = ESP32.esp32_time_utc(time_buf, 24)
       time_s = rc == 0 ? time_buf.delete("\0").strip : "(clock error)"
     end
-    body = status_page(ssid, rssi, chan, ip, led != 0, cell_v, time_s)
+    body = status_page(ssid, rssi, chan, ip, led != 0, cell_v, time_s,
+                       slot_s, ota_state)
     client.write "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n" \
                  "Content-Length: #{body.bytesize}\r\nConnection: close\r\n\r\n"
     client.write body
     client.close
+    # -- M6: serve-path GC checkpoint #2 (after response) --
+    # The page build + write leave a request's worth of strings and the
+    # old body garbage on the string heap; reclaiming them here, rather
+    # than at the next heartbeat (up to 1 s later), keeps the between-
+    # serves floor at the heartbeat level instead of ratcheting down
+    # ~200 B per serve (observed 9636 -> 9428 -> 9220 -> 4608).
+    ESP32.esp32_gc_step()
     puts "[#{loop_count}] served: #{req.split("\r\n")[0]}"
     rescue => e
       # socket-level error (ENOTCONN/ECONNRESET/...): the exchange is dead,
@@ -477,6 +856,12 @@ loop do
            "heap #{ESP32.esp32_heap_free()} (min #{ESP32.esp32_heap_min_free()}, " \
            "largest #{ESP32.esp32_heap_largest_block()})"
     end
+    # M6: one explicit collection per heartbeat -- bounds the decay
+    # between churn-triggered runs to ~one heartbeat's garbage (~260 B)
+    # instead of ~16 s' worth (~4 KB), so the IDF heap never dips near
+    # the 300 B region where esp_wifi/lwIP allocations fail. Run AFTER
+    # the heap log prints, so the next line shows the post-GC floor.
+    ESP32.esp32_gc_step()
     ESP32.esp32_delay_ms(20)
   else
     ESP32.esp32_delay_ms(20)
