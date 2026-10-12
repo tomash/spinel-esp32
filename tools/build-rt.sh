@@ -30,7 +30,11 @@ done
 TARGET="${TARGET:-riscv32}"
 case "$TARGET" in
   riscv32) GCC_NAME="riscv32-esp-elf-gcc" ;;
-  esp32)   GCC_NAME="xtensa-esp-elf-gcc" ;;
+  # Chip-specific driver, NOT the generic xtensa-esp-elf-gcc: the generic
+  # driver's default multilib is big-endian and the linker then rejects the
+  # archive ("compiled for a big endian system"). The esp32 driver defaults
+  # to the little-endian windowed ESP32 config.
+  esp32)   GCC_NAME="xtensa-esp32-elf-gcc" ;;
   *) echo "error: unknown target '$TARGET' (riscv32|esp32)" >&2; exit 1 ;;
 esac
 AR_NAME="${GCC_NAME%gcc}ar"   # riscv32-esp-elf-ar / xtensa-esp-elf-ar
@@ -116,12 +120,16 @@ SP_SZ="-DSP_GC_STACK_MAX=4096 -DSP_GC_REMEMBERED_MAX=1024 -DSP_GC_PINNED_MAX=102
   -DSP_ALLOC_STATS=512 -DSP_STR_SHAPE_MAX=512"
 
 # Arch flags: riscv32 needs the exact C3 march/mabi; xtensa (windowed ABI,
-# soft-float defaults) must get NONE -- ESP32's windowed ABI is the default
-# and -march=esp32 is rejected by this compiler; the target multilib picks
-# the core config.
+# soft-float defaults) must get NONE for core selection -- ESP32's windowed
+# ABI is the default and -march=esp32 is rejected by this compiler. But
+# -mlongcalls IS required for esp32: without it, call8 relocations to newlib
+# (memcpy etc.) go out of range at link time ("dangerous relocation: call8:
+# call target out of range"); IDF builds everything with it.
 ARCH_FLAGS=""
 if [[ "$TARGET" == "riscv32" ]]; then
   ARCH_FLAGS="-march=rv32imc_zicsr_zifencei -mabi=ilp32"
+elif [[ "$TARGET" == "esp32" ]]; then
+  ARCH_FLAGS="-mlongcalls"
 fi
 
 CFLAGS_RT="-O2 -ffunction-sections -fdata-sections -ffp-contract=off \

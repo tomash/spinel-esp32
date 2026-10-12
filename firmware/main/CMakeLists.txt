@@ -25,7 +25,7 @@ idf_component_register(
 # targets from add_prebuilt_library land as -l<name>, which the IDF link
 # line does not resolve against the archive path -- pass the full path.
 target_link_libraries(${COMPONENT_LIB} PUBLIC
-    ${CMAKE_CURRENT_LIST_DIR}/../../build/rt-riscv32/libspinel_rt_esp32.a)
+    ${SPINEL_RT_ARCHIVE})
 # The RT archive sits LAST on the IDF link line, after newlib/libc, so the
 # archive scan never loops back for symbols its objects reference (ld
 # scans left-to-right once). Two groups of late-reference victims:

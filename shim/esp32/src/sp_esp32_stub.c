@@ -32,6 +32,7 @@
 #include <sys/types.h>
 #include <signal.h>     /* the shim's own: struct sigaction, stack_t */
 #include <time.h>       /* struct timespec for nanosleep */
+#include "ucontext.h"   /* Xtensa link-time plugs (see bottom of file) */
 
 /* FreeRTOS calls, forward-declared: this file is compiled into the RT
  * archive by tools/build-rt.sh, whose include path is the shim + vendor
@@ -114,5 +115,41 @@ int nanosleep(const struct timespec *req, struct timespec *rem) {
     }
     return 0;
 }
+
+/* ---- ucontext: link-time plugs for the coroutine fallback (Xtensa only) ----
+ * sp_fiber.o/sp_sched.o are always pulled from the archive (the cooperative
+ * call sites in sp_io.c/sp_system.c/sp_cold.c reference sp_Thread_pass and
+ * sp_sched_wait_child unconditionally; the scheduler's GC hooks reach the
+ * fiber code by name), and on Xtensa lib/sp_fiber_ctx.h takes the POSIX
+ * ucontext fallback (SP_FIBER_ASM is 0), so getcontext/makecontext/
+ * swapcontext/setcontext must exist at link time. RV32 has the real thing
+ * (src/ucontext.S); Xtensa's windowed-ABI switch is a later milestone.
+ *
+ * These definitions are UNREACHABLE, not a degraded path: Fiber.new mmaps
+ * its stack, the shim answers MAP_FAILED and sp_fiber.c raises FiberError
+ * before any context exists; resume/yield/Enumerator all check f->stack
+ * first and raise the same way. Guarded to __xtensa__ so the day the real
+ * asm lands (or if these are ever compiled for RV32) there is a duplicate-
+ * definition error, not a silent shadow of working code. */
+#ifdef __xtensa__
+#include <stdlib.h>     /* abort */
+
+int getcontext(ucontext_t *ucp) {
+    (void)ucp; errno = ENOSYS;
+    abort();            /* unreachable: see above */
+}
+int setcontext(const ucontext_t *ucp) {
+    (void)ucp; errno = ENOSYS;
+    abort();            /* unreachable: see above */
+}
+void makecontext(ucontext_t *ucp, void (*func)(void), int argc, ...) {
+    (void)ucp; (void)func; (void)argc;
+    abort();            /* unreachable: see above */
+}
+int swapcontext(ucontext_t *oucp, const ucontext_t *ucp) {
+    (void)oucp; (void)ucp; errno = ENOSYS;
+    abort();            /* unreachable: see above */
+}
+#endif /* __xtensa__ */
 
 #endif /* __ESP32_SHIM__ */
