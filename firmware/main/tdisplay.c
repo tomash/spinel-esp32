@@ -145,16 +145,30 @@ int esp32_display_init(void)
 }
 
 /* Rotate the logical drawing surface. 0 = portrait (135x240, as mounted),
-   1 = landscape (240x135). Flips the MADCTL MV bit and, with it, which
-   address-window offset (x_gap/y_gap) applies to the short glass edge. */
+   1 = landscape (240x135).
+
+   Landscape is achieved with MADCTL MV|MX (Adafruit rotation 1 /
+   russhughes T-Display rot1 = 0x60), NOT the bare MV bit. The bare MV
+   transpose alone leaves the column-address order unreversed, so the scan
+   runs the opposite way along the long edge and every glyph comes out as a
+   horizontal mirror image -- the reported symptom. Adding MX restores the
+   left-to-right column order. With MV set the address-window gaps exchange
+   roles: the 1-pixel glass margin that sat on the 135-wide (portrait-x)
+   edge now rides the short landscape-y edge, so the offsets swap AND the
+   short-edge one grows by the missing column (52 -> 53), matching the
+   known-good T-Display driver table. */
 int esp32_display_set_orientation(int landscape)
 {
     if (!s_panel) return ESP_ERR_INVALID_STATE;
     wait_for_transfer();
     esp_err_t err = esp_lcd_panel_swap_xy(s_panel, landscape != 0);
     if (err != ESP_OK) return err;
+    /* MX only matters in landscape; clear it in portrait (MX with no MV
+       would mirror the upright portrait view). */
+    err = esp_lcd_panel_mirror(s_panel, landscape != 0, false);
+    if (err != ESP_OK) return err;
     if (landscape) {
-        err = esp_lcd_panel_set_gap(s_panel, 40, 52);
+        err = esp_lcd_panel_set_gap(s_panel, 40, 53);
         if (err != ESP_OK) return err;
         s_width  = TDISPLAY_WIDTH_LANDSCAPE;
         s_height = TDISPLAY_HEIGHT_LANDSCAPE;
