@@ -231,16 +231,24 @@ tools/        build pipeline scripts (host compile, cross compile, flash, monito
 vendor/       git submodules (spinel)
 ```
 
-The vendored `vendor/spinel` tracks upstream `matz/spinel` directly — the
-submodule URL points at `https://github.com/matz/spinel.git` and the
-checked-out commit is pinned in `SPINEL_PIN`. The three ESP32 tweaks this
-repo used to carry as a local patch series (signal-machinery gate,
-static-BSS tunable guards, aligned `sockaddr` connect) were merged upstream
-in [PR #8792][pr8792], so no patches are carried any more. Update the pin
-with `git -C vendor/spinel fetch origin master && git -C vendor/spinel
-checkout --detach <sha>`, then bump `SPINEL_PIN` to match.
+The vendored `vendor/spinel` tracks upstream `matz/spinel` — the submodule
+URL points at `https://github.com/matz/spinel.git` — with the checked-out
+commit pinned in `SPINEL_PIN`. The three ESP32 tweaks this repo once carried
+as a local patch series (signal-machinery gate, static-BSS tunable guards,
+aligned `sockaddr` connect) were merged upstream in [PR #8792][pr8792], so no
+patch files are carried any more.
+
+The pin is currently one commit past upstream `master`: an Xtensa link fix
+(`sp_poly_eq_deep`'s object arm guards `sp_obj_eq_hook`, so a program that
+installs no object-eq hook folds the arm away instead of leaving a call
+through a constant `NULL`, which the ESP32 linker rejects as a dangerous
+longcall relocation). That commit lives on the `esp32-eq-hook-guard` branch
+of the fork `github.com/tomash/spinel` and is submitted upstream as
+[PR #8819][pr8819]; once it lands, re-pin to upstream `master` and drop the
+fork branch.
 
 [pr8792]: https://github.com/matz/spinel/pull/8792
+[pr8819]: https://github.com/matz/spinel/pull/8819
 
 ## Status
 
