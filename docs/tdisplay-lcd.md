@@ -56,6 +56,58 @@ picture is shifted, upside down, or colors are inverted, adjust
 `esp_lcd_panel_set_gap`, `esp_lcd_panel_swap_xy`, `esp_lcd_panel_mirror`,
 `esp_lcd_panel_invert_color`, or element order in `firmware/main/tdisplay.c`.
 
+## Onboard buttons
+
+The T-Display (classic ESP32) has two tactile buttons on the board, beside
+the USB connector. Neither is broken out on the header, and both are
+**active-low with external pull-up resistors**:
+
+| Index | GPIO | Function |
+| ---: | ---: | --- |
+| 0 | 0 | left / `BOOT` button (also the strapping pin) |
+| 1 | 35 | right button |
+
+GPIO35 is an **input-only** pin with no internal pull-up, so the board's
+resistor is the only thing holding it high when released. The driver
+therefore configures plain `GPIO_MODE_INPUT` inputs with **no internal
+pulls** and reports a press when the level reads `0`:
+
+```ruby
+TDisplay.esp32_buttons_init          # idempotent; call once
+if TDisplay.esp32_button_pressed(0) == 1
+  # left button is down right now
+end
+```
+
+`esp32_buttons_init` is a one-shot: it programs the GPIO configuration on
+the first call and returns `ESP_OK` immediately on later calls.
+`esp32_button_pressed(idx)` returns `1` while the button is held, `0` when
+released, and `ESP_ERR_INVALID_ARG` for an index outside `[0, 1]`. The API
+does no debouncing or edge detection — poll it and remember the previous
+level yourself (see the demo below).
+
+`app/buttons_tdisplay.rb` is a complete demo: it draws a title bar, polls
+both buttons every 20 ms, and uses falling-edge detection so each physical
+press advances the colour once (left = next, right = previous) through an
+8-colour RGB565 palette, printing each change to the serial console:
+
+```sh
+SPINEL_ESP_PORT=/dev/ttyUSB1 bash tools/build-app.sh \
+  app/buttons_tdisplay.rb --target=esp32 --flash
+```
+
+Expected serial output:
+
+```
+T-Display buttons demo up (240x135); palette 8 colors
+Initial color: WHITE (65535)
+BTN0 (GPIO0) pressed -> RED
+```
+
+The demo is T-Display-specific (it does not gate on
+`esp32_board_has_lcd()`); the button symbols are linked into both targets,
+so the C3 build is unaffected.
+
 ## Build / flash
 
 Use the T-Display's serial port (on the session hardware this was

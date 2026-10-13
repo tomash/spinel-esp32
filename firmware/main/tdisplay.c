@@ -26,6 +26,13 @@
 #define TDISPLAY_RST    23
 #define TDISPLAY_BL     4
 
+/* Onboard push buttons, both active-low with external pull-ups:
+     idx 0 = GPIO0  (left / BOOT button)
+     idx 1 = GPIO35 (right button; an input-only pin with no internal
+                     pull, so the board's resistor is the only idle source) */
+#define TDISPLAY_BTN_COUNT 2
+static const int s_btn_pin[TDISPLAY_BTN_COUNT] = { 0, 35 };
+
 static esp_lcd_panel_handle_t s_panel;
 static SemaphoreHandle_t s_tx_done;
 static bool s_tx_pending;
@@ -162,6 +169,40 @@ int esp32_display_set_orientation(int landscape)
 
 int esp32_display_width(void)  { return s_width; }
 int esp32_display_height(void) { return s_height; }
+
+/* ---- onboard buttons ---------------------------------------------------
+   Both buttons tie the pin to GND when pressed and idle high through an
+   external pull-up (GPIO35 is input-only and has no internal pull, so the
+   external resistor is the only source of the idle level). We therefore
+   configure plain inputs with no internal pull and treat level==0 as
+   pressed. esp32_button_pressed() returns 1/0 for idx in [0,1], or a
+   negative ESP_ERR_INVALID_ARG for an out-of-range index. */
+
+static bool s_btn_inited;
+
+int esp32_buttons_init(void)
+{
+    if (s_btn_inited) return ESP_OK;
+    uint64_t mask = 0;
+    for (int i = 0; i < TDISPLAY_BTN_COUNT; i++) mask |= 1ULL << s_btn_pin[i];
+    gpio_config_t cfg = {
+        .pin_bit_mask = mask,
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    esp_err_t err = gpio_config(&cfg);
+    if (err != ESP_OK) return err;
+    s_btn_inited = true;
+    return ESP_OK;
+}
+
+int esp32_button_pressed(int idx)
+{
+    if (idx < 0 || idx >= TDISPLAY_BTN_COUNT) return ESP_ERR_INVALID_ARG;
+    return gpio_get_level(s_btn_pin[idx]) == 0 ? 1 : 0;
+}
 
 int esp32_display_clear(int color)
 {
