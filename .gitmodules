@@ -1,5 +1,3 @@
 [submodule "vendor/spinel"]
 	path = vendor/spinel
 	url = https://github.com/matz/spinel.git
-	shallow = true
-	update = none
