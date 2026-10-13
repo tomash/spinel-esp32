@@ -14,8 +14,11 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 
-#define TDISPLAY_WIDTH  135
-#define TDISPLAY_HEIGHT 240
+#define TDISPLAY_WIDTH_PORTRAIT  135
+#define TDISPLAY_HEIGHT_PORTRAIT 240
+#define TDISPLAY_WIDTH_LANDSCAPE  240
+#define TDISPLAY_HEIGHT_LANDSCAPE 135
+#define TDISPLAY_MAX_ROW          TDISPLAY_WIDTH_LANDSCAPE
 #define TDISPLAY_MOSI   19
 #define TDISPLAY_SCLK   18
 #define TDISPLAY_CS     5
@@ -26,7 +29,14 @@
 static esp_lcd_panel_handle_t s_panel;
 static SemaphoreHandle_t s_tx_done;
 static bool s_tx_pending;
-static DMA_ATTR uint16_t s_row[TDISPLAY_WIDTH];
+static DMA_ATTR uint16_t s_row[TDISPLAY_MAX_ROW];
+
+/* Logical (post-rotation) panel size. Defaults to the as-mounted portrait
+   window; esp32_display_set_orientation(1) switches to landscape by
+   transposing the scan direction (MADCTL MV) and swapping the address
+   window offset, so draw_bitmap coordinates are what the caller thinks. */
+static int s_width  = TDISPLAY_WIDTH_PORTRAIT;
+static int s_height = TDISPLAY_HEIGHT_PORTRAIT;
 
 static bool color_transfer_done(esp_lcd_panel_io_handle_t io, esp_lcd_panel_io_event_data_t *event, void *ctx)
 {
@@ -116,7 +126,8 @@ int esp32_display_init(void)
     err = esp_lcd_panel_init(s_panel);
     if (err != ESP_OK) return err;
 
-    /* T-Display glass exposes a 135x240 window inside the ST7789 RAM. */
+    /* T-Display glass exposes a 135x240 window inside the ST7789 RAM, seen
+       through a 52/40 address-window offset in the as-mounted orientation. */
     err = esp_lcd_panel_set_gap(s_panel, 52, 40);
     if (err != ESP_OK) return err;
     err = esp_lcd_panel_invert_color(s_panel, true);
@@ -126,13 +137,39 @@ int esp32_display_init(void)
     return gpio_set_level(TDISPLAY_BL, 1);
 }
 
+/* Rotate the logical drawing surface. 0 = portrait (135x240, as mounted),
+   1 = landscape (240x135). Flips the MADCTL MV bit and, with it, which
+   address-window offset (x_gap/y_gap) applies to the short glass edge. */
+int esp32_display_set_orientation(int landscape)
+{
+    if (!s_panel) return ESP_ERR_INVALID_STATE;
+    wait_for_transfer();
+    esp_err_t err = esp_lcd_panel_swap_xy(s_panel, landscape != 0);
+    if (err != ESP_OK) return err;
+    if (landscape) {
+        err = esp_lcd_panel_set_gap(s_panel, 40, 52);
+        if (err != ESP_OK) return err;
+        s_width  = TDISPLAY_WIDTH_LANDSCAPE;
+        s_height = TDISPLAY_HEIGHT_LANDSCAPE;
+    } else {
+        err = esp_lcd_panel_set_gap(s_panel, 52, 40);
+        if (err != ESP_OK) return err;
+        s_width  = TDISPLAY_WIDTH_PORTRAIT;
+        s_height = TDISPLAY_HEIGHT_PORTRAIT;
+    }
+    return ESP_OK;
+}
+
+int esp32_display_width(void)  { return s_width; }
+int esp32_display_height(void) { return s_height; }
+
 int esp32_display_clear(int color)
 {
     if (!s_panel) return ESP_ERR_INVALID_STATE;
     wait_for_transfer();
-    for (int x = 0; x < TDISPLAY_WIDTH; x++) s_row[x] = (uint16_t)color;
-    for (int y = 0; y < TDISPLAY_HEIGHT; y++) {
-        esp_err_t err = draw_row(0, y, TDISPLAY_WIDTH);
+    for (int x = 0; x < s_width; x++) s_row[x] = (uint16_t)color;
+    for (int y = 0; y < s_height; y++) {
+        esp_err_t err = draw_row(0, y, s_width);
         if (err != ESP_OK) return err;
     }
     wait_for_transfer();
@@ -148,8 +185,8 @@ int esp32_display_rect(int x, int y, int width, int height, int color, int fille
     int y0 = y < 0 ? 0 : y;
     int x1 = x + width;
     int y1 = y + height;
-    if (x1 > TDISPLAY_WIDTH) x1 = TDISPLAY_WIDTH;
-    if (y1 > TDISPLAY_HEIGHT) y1 = TDISPLAY_HEIGHT;
+    if (x1 > s_width) x1 = s_width;
+    if (y1 > s_height) y1 = s_height;
     if (x0 >= x1 || y0 >= y1) return ESP_OK;
 
     for (int row = y0; row < y1; row++) {
@@ -190,12 +227,12 @@ int esp32_display_text(const char *text, int x, int y, int fg, int bg, int scale
     wait_for_transfer();
     if (!text || scale < 1 || scale > 4) return ESP_ERR_INVALID_ARG;
     size_t len = strlen(text);
-    if (len == 0 || x >= TDISPLAY_WIDTH || y >= TDISPLAY_HEIGHT || y + 7 * scale <= 0) return ESP_OK;
-    int max_chars = (TDISPLAY_WIDTH - (x > 0 ? x : 0) + 6 * scale - 1) / (6 * scale);
+    if (len == 0 || x >= s_width || y >= s_height || y + 7 * scale <= 0) return ESP_OK;
+    int max_chars = (s_width - (x > 0 ? x : 0) + 6 * scale - 1) / (6 * scale);
     if ((int)len > max_chars) len = (size_t)max_chars;
     int width = (int)len * 6 * scale;
     if (x < 0) { int skip = (-x + 6 * scale - 1) / (6 * scale); if ((size_t)skip >= len) return ESP_OK; text += skip; len -= (size_t)skip; x += skip * 6 * scale; width = (int)len * 6 * scale; }
-    if (x + width > TDISPLAY_WIDTH) width = TDISPLAY_WIDTH - x;
+    if (x + width > s_width) width = s_width - x;
 
     for (int gy = 0; gy < 7; gy++) {
         int col = 0;
@@ -211,7 +248,7 @@ int esp32_display_text(const char *text, int x, int y, int fg, int bg, int scale
         while (col < width) s_row[col++] = (uint16_t)bg;
         for (int sy = 0; sy < scale; sy++) {
             int py = y + gy * scale + sy;
-            if (py < 0 || py >= TDISPLAY_HEIGHT) continue;
+            if (py < 0 || py >= s_height) continue;
             esp_err_t err = draw_row(x, py, width);
             if (err != ESP_OK) return err;
         }

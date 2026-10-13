@@ -461,16 +461,29 @@ end
 # by esp32_board_has_lcd -- on the C3 the calls are never made.
 module TDisplay
   ffi_func :esp32_display_init,  [], :int
+  ffi_func :esp32_display_set_orientation, [:int], :int
+  ffi_func :esp32_display_width,  [], :int
+  ffi_func :esp32_display_height, [], :int
   ffi_func :esp32_display_clear, [:int], :int
   ffi_func :esp32_display_rect,  [:int, :int, :int, :int, :int, :int], :int
   ffi_func :esp32_display_text,  [:str, :int, :int, :int, :int, :int], :int
 end
 
-# Panel is portrait 135x240 (known-good gap 52/40 + inversion; landscape
-# via MADCTL MV would transpose draw_bitmap coordinates -- revisit after a
-# visual check). Colors: RGB565.
-W = 135
-H = 240
+# Panel driven in landscape 240x135 (set_orientation(1) transposes the
+# MADCTL scan so x runs along the long glass edge -- the wide axis fits the
+# full URL/host lines without wrapping). Colors: RGB565.
+W = 240
+H = 135
+
+# Battery-present threshold. No pack wired to the divider reads ~0.0-0.3 V
+# (floating pin); a real single-cell LiPo sits well above 3 V. Below the
+# floor we print "NO BATTERY" instead of a bogus cell voltage.
+BATT_MIN_V = 1.50
+
+def batt_label(cell_v)
+  return "NO BATTERY" if cell_v.nil? || cell_v < BATT_MIN_V
+  "CELL #{cell_v}V"
+end
 
 # Boot/status screens. All helpers no-op silently when the board has no
 # panel; esp32_display_* return IDF error codes which we log once.
@@ -483,6 +496,11 @@ def lcd_boot
     puts "LCD: init failed (#{rc}) -- continuing headless"
     return false
   end
+  rc = TDisplay.esp32_display_set_orientation(1)   # landscape 240x135
+  if rc != 0
+    puts "LCD: orientation set failed (#{rc}) -- continuing as-is"
+    return false
+  end
   TDisplay.esp32_display_clear(0x0000)
   true
 end
@@ -492,36 +510,38 @@ def lcd_show_booting(ssid)
   TDisplay.esp32_display_rect(0, 0, W, 28, 0x001F, 1)          # blue title bar
   TDisplay.esp32_display_text("TTGO T-DISPLAY", 6, 9, 0xFFFF, 0x001F, 1)
   TDisplay.esp32_display_text("SPINEL ESP32", 8, 44, 0x07E0, 0x0000, 2)
-  TDisplay.esp32_display_text("WIFI:", 8, 84, 0xFFFF, 0x0000, 1)
-  TDisplay.esp32_display_text(ssid[0, 21], 8, 100, 0xFFE0, 0x0000, 1)
-  TDisplay.esp32_display_text("CONNECTING...", 8, 120, 0xFFFF, 0x0000, 1)
+  TDisplay.esp32_display_text("WIFI: #{ssid[0, 32]}", 8, 84, 0xFFE0, 0x0000, 1)
+  TDisplay.esp32_display_text("CONNECTING...", 8, 110, 0xFFFF, 0x0000, 1)
 end
 
 def lcd_show_running(ip, host, cell_v)
   return unless $lcd_ok
   TDisplay.esp32_display_clear(0x0000)
-  TDisplay.esp32_display_rect(0, 0, W, 28, 0x001F, 1)          # blue title bar
-  TDisplay.esp32_display_text("TTGO T-DISPLAY", 6, 9, 0xFFFF, 0x001F, 1)
+  TDisplay.esp32_display_rect(0, 0, W, 24, 0x001F, 1)          # blue title bar
+  TDisplay.esp32_display_text("TTGO T-DISPLAY", 6, 7, 0xFFFF, 0x001F, 1)
   # the one thing the screen exists for: the address to open
-  TDisplay.esp32_display_text("HTTP://", 8, 48, 0x07E0, 0x0000, 1)
-  TDisplay.esp32_display_text(ip, 8, 62, 0x07E0, 0x0000, 2)
-  TDisplay.esp32_display_text("AND", 8, 96, 0xFFFF, 0x0000, 1)
-  TDisplay.esp32_display_text("HTTP://#{host}", 8, 110, 0x07E0, 0x0000, 1)
-  TDisplay.esp32_display_text(".LOCAL", 8, 124, 0x07E0, 0x0000, 1)
-  TDisplay.esp32_display_text("SERVING / ON :80", 8, 150, 0xFFFF, 0x0000, 1)
+  TDisplay.esp32_display_text("HTTP://", 6, 34, 0x07E0, 0x0000, 1)
+  # IP auto-sizes: scale 2 (12 px/char + spacing) fits up to 19 chars;
+  # a normal dotted quad (<=15) stays big.
+  ip_scale = ip.size <= 18 ? 2 : 1
+  TDisplay.esp32_display_text(ip, 54, 28, 0x07E0, 0x0000, ip_scale)
+  TDisplay.esp32_display_text("OR", 6, 64, 0xFFFF, 0x0000, 1)
+  # Hostname on one line: 240 px / 6 px per char = 40 chars at scale 1.
+  TDisplay.esp32_display_text("HTTP://#{host}.local", 6, 80, 0x07E0, 0x0000, 1)
+  TDisplay.esp32_display_text("SERVING / ON :80", 6, 100, 0xFFFF, 0x0000, 1)
   lcd_battery_line(cell_v)
 end
 
 def lcd_battery_line(cell_v)
   return unless $lcd_ok
-  TDisplay.esp32_display_rect(0, 228, W, 12, 0x0000, 1)        # wipe footer
-  TDisplay.esp32_display_text("CELL #{cell_v}V", 8, 228, 0xFFE0, 0x0000, 1)
+  TDisplay.esp32_display_rect(0, H - 12, W, 12, 0x0000, 1)     # wipe footer
+  TDisplay.esp32_display_text(batt_label(cell_v), 6, H - 12, 0xFFE0, 0x0000, 1)
 end
 
 def lcd_show_wifi_failed
   return unless $lcd_ok
-  TDisplay.esp32_display_text("WIFI: NO LINK", 8, 120, 0xF800, 0x0000, 1)
-  TDisplay.esp32_display_text("SERVING IP ONLY", 8, 136, 0xFFFF, 0x0000, 1)
+  TDisplay.esp32_display_text("WIFI: NO LINK", 6, 96, 0xF800, 0x0000, 1)
+  TDisplay.esp32_display_text("SERVING IP ONLY", 6, 112, 0xFFFF, 0x0000, 1)
 end
 
 # ---- buffers for the out-param FFI calls (String allocated in Ruby) ----
