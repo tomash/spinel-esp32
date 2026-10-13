@@ -60,7 +60,7 @@ case "$cmd" in
       cp vendor/spinel/bin/spinel "$DIST/spinel"
       echo "  spinel  ($(wc -c < "$DIST/spinel") bytes)"
     fi
-    ( cd "$DIST" && sha256sum ./*.a ./*[^.] 2>/dev/null > SHA256SUMS || true )
+    ( cd "$DIST" && ls -1 | grep -v '^SHA256SUMS$' | sort | xargs sha256sum > SHA256SUMS || true )
     echo "==> assets in $DIST"
     ls -l "$DIST"
     ;;
