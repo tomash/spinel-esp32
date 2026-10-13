@@ -52,16 +52,16 @@ macOS: `xcode-select --install` covers the C toolchain; brew install ruby, wget.
 ```bash
 git clone https://github.com/tomash/spinel-esp32.git
 cd spinel-esp32
-git submodule update --init          # checks out vendor/spinel at the pinned commit
-make -C vendor/spinel deps          # fetches prism v1.9.0 + rbs from rubygems (into vendor/)
-make -C vendor/spinel               # builds bin/spinel + friends
+git submodule update --init --recursive   # vendor/spinel at the pinned commit
+make -C vendor/spinel deps                # prism v1.9.0 + rbs from rubygems (into vendor/)
+make -C vendor/spinel                     # builds bin/spinel + friends
 ```
 
 Verify:
 
 ```bash
 vendor/spinel/bin/spinel --version
-# spinel 2026.09.12+8910 (c172a3851) [...]
+# spinel 2026.09.12+9032 (6604788ef) [...]
 ```
 
 ### 3. Install ESP-IDF (the cross toolchain)
@@ -231,21 +231,21 @@ tools/        build pipeline scripts (host compile, cross compile, flash, monito
 vendor/       git submodules (spinel)
 ```
 
-The vendored `vendor/spinel` tracks upstream `matz/spinel` — the submodule
-URL points at `https://github.com/matz/spinel.git` — with the checked-out
-commit pinned in `SPINEL_PIN`. The three ESP32 tweaks this repo once carried
-as a local patch series (signal-machinery gate, static-BSS tunable guards,
-aligned `sockaddr` connect) were merged upstream in [PR #8792][pr8792], so no
-patch files are carried any more.
+The vendored `vendor/spinel` tracks upstream `matz/spinel` master with the
+checked-out commit pinned in `SPINEL_PIN`. Everything this repo once carried
+as a local patch series, or on a fork branch, is upstream now:
 
-The pin is currently one commit past upstream `master`: an Xtensa link fix
-(`sp_poly_eq_deep`'s object arm guards `sp_obj_eq_hook`, so a program that
-installs no object-eq hook folds the arm away instead of leaving a call
-through a constant `NULL`, which the ESP32 linker rejects as a dangerous
-longcall relocation). That commit lives on the `esp32-eq-hook-guard` branch
-of the fork `github.com/tomash/spinel` and is submitted upstream as
-[PR #8819][pr8819]; once it lands, re-pin to upstream `master` and drop the
-fork branch.
+- The three ESP32 tweaks (signal-machinery gate, static-BSS tunable guards,
+  aligned `sockaddr` connect) were merged in [PR #8792][pr8792].
+- The Xtensa link fix (`sp_poly_eq_deep`'s object arm guards `sp_obj_eq_hook`,
+  so a program that installs no object-eq hook folds the arm away instead of
+  leaving a call through a constant `NULL`, which the ESP32 linker rejects as
+  a dangerous longcall relocation) was merged in [PR #8819][pr8819] as
+  `d66936fd`.
+
+So the submodule points at upstream alone — no fork, no carried diff. To move
+the pin forward, check out a newer upstream commit in `vendor/spinel` and bump
+`SPINEL_PIN`.
 
 [pr8792]: https://github.com/matz/spinel/pull/8792
 [pr8819]: https://github.com/matz/spinel/pull/8819
