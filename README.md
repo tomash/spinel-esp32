@@ -25,6 +25,24 @@ Status: the pipeline runs **on hardware**. Four Ruby apps (battery ADC, GPIO bli
 I2C scan, WiFi status server) compile from Ruby to C to firmware and run on a
 LilyGO T-OI Plus (ESP32-C3, RV32IMAC), verified over serial and over the network.
 
+## Quick start
+
+```bash
+git clone https://github.com/tomash/spinel-esp32.git
+cd spinel-esp32
+make setup        # submodule + host spinel + cross runtime (one time)
+make flash APP=app/blink.rb     # Ruby -> C -> idf.py build -> flash -> serial log
+```
+
+`make setup` is the whole bootstrap: it checks out the pinned submodule, fetches
+spinel's dependencies, builds the host compiler, and installs the ESP32 cross
+runtime (**downloaded prebuilt** for the current pin, so the ~7-minute cross
+build is skipped). It also tells you how to install ESP-IDF if it is missing
+(needed only for the firmware steps, not the host pipeline).
+
+Everything below is the same flow spelled out by hand, plus the details you need
+when something needs explaining.
+
 ## Prerequisites
 
 A Linux host (tested on Ubuntu 24.04; Debian/Fedora/Arch equivalents work). Two
@@ -56,6 +74,9 @@ git submodule update --init --recursive   # vendor/spinel at the pinned commit
 make -C vendor/spinel deps                # prism v1.9.0 + rbs from rubygems (into vendor/)
 make -C vendor/spinel                     # builds bin/spinel + friends
 ```
+
+(or just `make setup`, which runs all of the above and skips whatever is already
+done.)
 
 Verify:
 
@@ -114,17 +135,25 @@ tools/build-app.sh app/hello.rb --emit-only  # just emit build/hello.c, no compi
 Connect the board over USB (CH340 serial; `/dev/ttyUSB0`). One-time setup:
 
 ```bash
-tools/build-rt.sh     # cross-compiles libspinel_rt for riscv32-esp-elf (~7 min, once)
+make setup      # the cross runtime is fetched prebuilt; builds it only if needed
 ```
 
-Then flash any app with a single command:
+Then flash any app:
 
 ```bash
-tools/build-app.sh app/blink.rb --target=esp32          # emit C only
-tools/build-app.sh app/blink.rb --target=esp32 --flash    # + idf.py build & flash
-tools/build-app.sh app/blink.rb --target=esp32 --monitor  # + capture serial output
+make emit APP=app/blink.rb              # Ruby -> C only
+make flash APP=app/blink.rb             # + idf.py build & flash
+make monitor APP=app/blink.rb           # + capture serial output
+# equivalents using the scripts directly:
+tools/build-app.sh app/blink.rb --target=esp32
+tools/build-app.sh app/blink.rb --target=esp32 --flash
+tools/build-app.sh app/blink.rb --target=esp32 --flash --monitor
 # serial output lands in build/blink.log
 ```
+
+`make` variables: `APP` (the `.rb`), `TARGET=esp32c3|esp32` (board), `PORT`
+(serial device), `RT=riscv32|esp32` (runtime to build). Other targets: `make run`
+(host), `make rt`, `make size`, `make clean`.
 
 `--monitor` resets the board (DTR/RTS sequencing via `tools/monitor.py`) and captures
 ~12 s of UART output into `build/<app>.log`. Env overrides: `SPINEL_ESP_PORT`
@@ -227,9 +256,14 @@ app/          Ruby applications (the actual firmware logic)
 docs/         findings.md (runtime port research), plan.md (milestones), boards/
 firmware/     ESP-IDF project skeleton (CMakeLists, sdkconfig, app.c slot)
 shim/esp32/   FreeRTOS/newlib compatibility shim for libspinel_rt (the core work)
-tools/        build pipeline scripts (host compile, cross compile, flash, monitor)
+tools/        build pipeline scripts (bootstrap, host compile, cross compile, flash,
+              monitor, release assets)
 vendor/       git submodules (spinel)
+Makefile      friendly entry point over tools/ (setup, run, emit, flash, monitor)
 ```
+
+New here? `make setup`, then `make flash APP=app/blink.rb`. See
+`docs/packaging.md` for how the prebuilt runtime releases are cut.
 
 The vendored `vendor/spinel` tracks upstream `matz/spinel` master with the
 checked-out commit pinned in `SPINEL_PIN`. Everything this repo once carried
@@ -244,8 +278,9 @@ as a local patch series, or on a fork branch, is upstream now:
   `d66936fd`.
 
 So the submodule points at upstream alone — no fork, no carried diff. To move
-the pin forward, check out a newer upstream commit in `vendor/spinel` and bump
-`SPINEL_PIN`.
+the pin forward, check out a newer upstream commit in `vendor/spinel`, bump
+`SPINEL_PIN`, and (for Releases) republish the runtime assets under the new
+tag with `tools/release-assets.sh publish`.
 
 [pr8792]: https://github.com/matz/spinel/pull/8792
 [pr8819]: https://github.com/matz/spinel/pull/8819
