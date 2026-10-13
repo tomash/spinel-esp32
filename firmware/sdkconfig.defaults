@@ -60,3 +60,16 @@ CONFIG_BOOTLOADER_APP_ANTI_ROLLBACK=n
 # Current shipped build: CONFIG_IDF_TARGET="esp32c3",
 # CONFIG_COMPILER_OPTIMIZATION_SIZE=y (both live in sdkconfig, sizes
 # tracked: instrumented 1299632 B / clean 1269296 B app image).
+
+# M6 OTA layout: select firmware/partitions.csv (two 1.8125 MB app slots
+# ota_0/ota_1 + 8 KB otadata) instead of IDF's stock 1 MB single-app table.
+# Without this key the build silently falls back to partitions_singleapp.csv
+# -> wifi_status (~1.43 MB C3 / ~1.31 MB esp32) overflows the 1 MB factory
+# slot and check_sizes.py fails. The path is relative to the project dir
+# (firmware/), where partitions.csv lives. See docs/plan-m6-ota.md.
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# Boards are 4 MB; the OTA table ends at 0x3C0000 and must not be clamped
+# to the IDF default 2 MB flash-size assumption.
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
