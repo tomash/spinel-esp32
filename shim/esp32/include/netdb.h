@@ -71,6 +71,14 @@ void freeaddrinfo(struct addrinfo *ai);
 int  getaddrinfo(const char *nodename, const char *servname,
                  const struct addrinfo *hints, struct addrinfo **res);
 
+/* gai_strerror: lwip declares it only when LWIP_NETDB_HAS_GAI_STRERROR=1 and
+ * IDF leaves that undefined (no provider in the IDF tree -- see
+ * components/lwip/include/lwip/netdb.h:19), so the standalone RT cross-build
+ * gets no declaration. Upstream sp_net_listen_all calls it on a resolver
+ * failure; the shim supplies the definition (shim/esp32/src/sp_esp32_stub.c),
+ * mapping lwip's EAI_* values to stable strings. */
+const char *gai_strerror(int errcode);
+
 extern int h_errno;
 
 #ifdef __cplusplus

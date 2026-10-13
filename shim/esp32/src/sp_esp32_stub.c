@@ -89,6 +89,20 @@ int getrusage(int who, void *ru) { (void)who; (void)ru; errno = ENOSYS; return -
 /* ---- priorities (Process.getpriority, sp_cold.c:990) ---- */
 int getpriority(int which, id_t who) { (void)which; (void)who; errno = ENOSYS; return -1; }
 
+/* ---- netdb: gai_strerror ---- */
+#include <netdb.h>   /* EAI_* values (lwip's; the shim defines the same set) */
+const char *gai_strerror(int errcode) {
+    switch (errcode) {
+    case 0:                 return "no error";
+    case EAI_NONAME:        return "Name does not resolve";
+    case EAI_SERVICE:       return "Servname not supported for ai_socktype";
+    case EAI_FAIL:          return "Non-recoverable failure in name resolution";
+    case EAI_MEMORY:        return "Memory allocation failure";
+    case EAI_FAMILY:        return "ai_family not supported";
+    default:                return "Unknown error";
+    }
+}
+
 /* ---- Kernel#sleep (sp_cold.c sp_sleep -> nanosleep): the one POSIX
  * timer newlib-on-IDF does not provide.  Implemented on vTaskDelay:
  * ticks are 10ms (Hz=100), rounding UP so a sub-tick sleep still

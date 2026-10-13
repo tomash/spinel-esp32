@@ -61,7 +61,7 @@ Verify:
 
 ```bash
 vendor/spinel/bin/spinel --version
-# spinel 2026.09.12+8185 (6b6f4602c) [...]
+# spinel 2026.09.12+8910 (c172a3851) [...]
 ```
 
 ### 3. Install ESP-IDF (the cross toolchain)
@@ -227,17 +227,20 @@ app/          Ruby applications (the actual firmware logic)
 docs/         findings.md (runtime port research), plan.md (milestones), boards/
 firmware/     ESP-IDF project skeleton (CMakeLists, sdkconfig, app.c slot)
 shim/esp32/   FreeRTOS/newlib compatibility shim for libspinel_rt (the core work)
-patches/      patches carried against vendor/spinel (series-style)
 tools/        build pipeline scripts (host compile, cross compile, flash, monitor)
 vendor/       git submodules (spinel)
 ```
 
-The vendored `vendor/spinel` is pinned to a snapshot of `matz/spinel`
-(6b6f4602c) and carries 3 ESP32 patches locally (see `patches/`). The
-patched commits are also published on the `esp32-shim` branch of the
-fork `github.com/tomash/spinel` — the vendored pin is deliberate; don't
-rebase it onto upstream master (upstream moves fast: 513 commits since
-the snapshot), and `patches/0050-*.patch` preserves the diff regardless.
+The vendored `vendor/spinel` tracks upstream `matz/spinel` directly — the
+submodule URL points at `https://github.com/matz/spinel.git` and the
+checked-out commit is pinned in `SPINEL_PIN`. The three ESP32 tweaks this
+repo used to carry as a local patch series (signal-machinery gate,
+static-BSS tunable guards, aligned `sockaddr` connect) were merged upstream
+in [PR #8792][pr8792], so no patches are carried any more. Update the pin
+with `git -C vendor/spinel fetch origin master && git -C vendor/spinel
+checkout --detach <sha>`, then bump `SPINEL_PIN` to match.
+
+[pr8792]: https://github.com/matz/spinel/pull/8792
 
 ## Status
 

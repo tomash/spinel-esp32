@@ -102,6 +102,15 @@ struct linger {
 #define SOCK_DGRAM    2
 #define SOCK_RAW      3
 
+/* ---- listen backlog ----------------------------------------------------- */
+/* ESP-IDF defines SOMAXCONN in <net/if.h> (components/newlib/platform_include/
+ * net/if.h:20, value 128); the standalone RT cross-build has no <net/if.h> in
+ * scope, and upstream sp_net_listen_all passes it to listen(2). Match IDF's
+ * value exactly so a future firmware build resolves the same backlog. */
+#ifndef SOMAXCONN
+#define SOMAXCONN     128
+#endif
+
 /* ---- shutdown (lwip) ---------------------------------------------------- */
 #define SHUT_RD       0
 #define SHUT_WR       1

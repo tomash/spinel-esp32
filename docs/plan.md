@@ -43,8 +43,10 @@
 - [x] M6: OTA updates end-to-end — dual slots, streaming install with
       sequential erase, /ota/check|start|status|reboot, bootloader rollback
       (see docs/plan-m6-ota.md)
-- [ ] Rebase patches onto spinel master, open `--target=esp32` PR mirroring
-      lib/wasi/ (they already accepted one constrained target in-tree)
+- [x] ESP32 tweaks merged upstream in matz/spinel (PR #8792, merged as
+      1998f8b4d); the vendored submodule now tracks upstream master directly
+      and no local patch series is carried. A follow-up `--target=esp32` PR
+      mirroring lib/wasi/ remains open (see M7/Xtensa notes).
 - Deliverable: PR to matz/spinel + a RubyKaigi-grade writeup.
 
 ## M7 — Xtensa (T-Display port) [planned]
