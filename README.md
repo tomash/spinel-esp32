@@ -159,6 +159,21 @@ tools/build-app.sh app/blink.rb --target=esp32 --flash --monitor
 ~12 s of UART output into `build/<app>.log`. Env overrides: `SPINEL_ESP_PORT`
 (default `/dev/ttyUSB0`), `SPINEL_ESP_CAPTURE` (seconds).
 
+## WiFi credentials
+
+`app/wifi_status.rb` reads its SSID and password from
+`firmware/main/wifi_secrets.h`, which is gitignored. `tools/build-app.sh`
+writes it for you from `WIFI_SSID` / `WIFI_PASSWORD`, taken from the
+environment or from a top-level `.env` (also gitignored):
+
+```bash
+printf 'WIFI_SSID=my-network\nWIFI_PASSWORD=secret\n' > .env
+make flash APP=app/wifi_status.rb TARGET=esp32
+```
+
+Or copy `firmware/main/wifi_secrets.h.example` to `wifi_secrets.h` and edit
+it. Without either, the wifi_status build stops with a pointer to this.
+
 ## Updating firmware over the air (M6)
 
 Once the board is on WiFi, you can update it without a USB cable. Serve the

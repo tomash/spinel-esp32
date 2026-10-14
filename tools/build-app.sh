@@ -69,6 +69,20 @@ if [[ "$mode" == "--target=esp32" || $want_flash -eq 1 || $want_monitor -eq 1 ]]
   echo "==> copy $OUT/$base.c -> firmware/main/app.c"
   cp "$OUT/$base.c" "$ROOT/firmware/main/app.c"
 
+  # WiFi credentials -> firmware/main/wifi_secrets.h (gitignored). Taken
+  # from the environment, else from a top-level .env; an existing header
+  # is left alone when neither sets them.
+  if [[ -z "${WIFI_SSID:-}" && -f "$ROOT/.env" ]]; then
+    set -a; source "$ROOT/.env"; set +a
+  fi
+  if [[ -n "${WIFI_SSID:-}" ]]; then
+    c_str() { local s="${1//\\/\\\\}"; printf '"%s"' "${s//\"/\\\"}"; }
+    printf '#define WIFI_SSID     %s\n#define WIFI_PASSWORD %s\n' \
+      "$(c_str "$WIFI_SSID")" "$(c_str "${WIFI_PASSWORD:-}")" \
+      > "$ROOT/firmware/main/wifi_secrets.h"
+    echo "==> wrote firmware/main/wifi_secrets.h (SSID $WIFI_SSID)"
+  fi
+
   echo "==> idf.py set-target $TARGET (regenerates sdkconfig from defaults)"
   ( cd "$ROOT/firmware" && source "$IDF_EXPORT" >/dev/null 2>&1 \
       && idf.py set-target "$TARGET" )

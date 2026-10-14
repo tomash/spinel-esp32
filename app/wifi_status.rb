@@ -23,9 +23,11 @@
 
 require "socket"
 
-# hotspot creds (Fairphone test): "Tomash Fairphone" / "railsgirls"
-SSID     = ENV.fetch("WIFI_SSID",     "CzekamyNaAlvarium-asus4")
-PASSWORD = ENV.fetch("WIFI_PASSWORD", "langsamabersicher")
+# WiFi credentials are not in this file: they come from
+# firmware/main/wifi_secrets.h (gitignored), written by tools/build-app.sh
+# from WIFI_SSID / WIFI_PASSWORD (env or .env). ENV.fetch would not work
+# here -- spinel compiles it to a getenv() on the device, which has no
+# environment, so the fallback literal always won and ended up in app.c.
 PORT     = 80
 LED_PIN  = 3
 DIVIDER  = 2 # 100k/100k divider: cell = 2x pin voltage
@@ -143,9 +145,19 @@ module ESP32
         }
     }
 
-    int esp32_wifi_init(const char *ssid, const char *pass) {
-        if (nvs_flash_init() == ESP_ERR_NVS_NO_FREE_PAGES ||
-            nvs_flash_init() == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+    #if __has_include("wifi_secrets.h")
+      #include "wifi_secrets.h"
+    #else
+      #error "missing firmware/main/wifi_secrets.h -- set WIFI_SSID/WIFI_PASSWORD (env or .env) or copy wifi_secrets.h.example"
+    #endif
+
+    const char *esp32_wifi_ssid(void) { return WIFI_SSID; }
+
+    int esp32_wifi_init(void) {
+        const char *ssid = WIFI_SSID, *pass = WIFI_PASSWORD;
+        esp_err_t nvs = nvs_flash_init();
+        if (nvs == ESP_ERR_NVS_NO_FREE_PAGES ||
+            nvs == ESP_ERR_NVS_NEW_VERSION_FOUND) {
             nvs_flash_erase();
             nvs_flash_init();
         }
@@ -427,7 +439,8 @@ module ESP32
   ffi_func :esp32_led_write,    [:int, :int], :int
   ffi_func :esp32_board_name,   [], :str
   ffi_func :esp32_board_has_lcd, [], :int
-  ffi_func :esp32_wifi_init,     [:str, :str], :int
+  ffi_func :esp32_wifi_ssid,     [], :str
+  ffi_func :esp32_wifi_init,     [], :int
   ffi_func :esp32_wifi_connect, [], :int
   ffi_func :esp32_wifi_scan,    [], :int
   ffi_func :esp32_wifi_connected, [], :int
@@ -585,6 +598,7 @@ def status_page(ssid, rssi, chan, ip, led, cell_v, time_s, slot_s, ota)
 end
 
 # ---- bring-up ----
+SSID = ESP32.esp32_wifi_ssid.delete("\0")
 ESP32.esp32_gc_tune()   # M5c: GC triggers sized for the part, before churn starts
 $lcd_ok = lcd_boot()    # T-Display: panel up before anything slow runs
 if $lcd_ok
@@ -593,7 +607,7 @@ if $lcd_ok
 end
 ESP32.esp32_led_init(LED_PIN)
 ESP32.esp32_led_write(LED_PIN, 1)
-rc = ESP32.esp32_wifi_init(SSID, PASSWORD)
+rc = ESP32.esp32_wifi_init()
 if rc != 0
   puts "esp32_wifi_init failed: #{rc}"
   abort "wifi init failed"
