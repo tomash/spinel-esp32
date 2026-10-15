@@ -142,10 +142,12 @@ Then flash any app:
 
 ```bash
 make emit APP=app/blink.rb              # Ruby -> C only
+make build APP=app/blink.rb             # + idf.py build (no board needed)
 make flash APP=app/blink.rb             # + idf.py build & flash
 make monitor APP=app/blink.rb           # + capture serial output
 # equivalents using the scripts directly:
 tools/build-app.sh app/blink.rb --target=esp32
+tools/build-app.sh app/blink.rb --target=esp32 --build
 tools/build-app.sh app/blink.rb --target=esp32 --flash
 tools/build-app.sh app/blink.rb --target=esp32 --flash --monitor
 # serial output lands in build/blink.log
@@ -158,6 +160,13 @@ tools/build-app.sh app/blink.rb --target=esp32 --flash --monitor
 `--monitor` resets the board (DTR/RTS sequencing via `tools/monitor.py`) and captures
 ~12 s of UART output into `build/<app>.log`. Env overrides: `SPINEL_ESP_PORT`
 (default `/dev/ttyUSB0`), `SPINEL_ESP_CAPTURE` (seconds).
+
+**Per-app sdkconfig overrides.** An app can carry ESP-IDF config of its own
+next to its source: `app/<name>.sdkconfig` (every target) and/or
+`app/<name>.sdkconfig.<target>` (one chip). `tools/build-app.sh` layers them
+over `firmware/sdkconfig.defaults` for that app only and prints
+`==> app sdkconfig override: ...` when it does. No other app sees them.
+`app/wifi_status_dualcore.sdkconfig.esp32` is the example.
 
 ## WiFi credentials
 
@@ -180,7 +189,7 @@ Once the board is on WiFi, you can update it without a USB cable. Serve the
 new app image over the LAN and point the board at it:
 
 ```bash
-tools/build-app.sh app/wifi_status.rb --target=esp32    # rebuilds firmware
+tools/build-app.sh app/wifi_status.rb --target=esp32 --build   # rebuilds firmware
 mkdir -p /tmp/pub && cp firmware/build/spinel_esp32_app.bin /tmp/pub/spinel.bin
 cd /tmp/pub && python3 -m http.server 8000 &
 
@@ -211,6 +220,7 @@ curl http://<board>/ota/reboot
 | `app/battery.rb` | ADC + eFuse calibration | battery cell voltage, calibrated |
 | `app/i2c.rb` | I2C master bus | SDA=18/SCL=19 scan, device list |
 | `app/wifi_status.rb` | WiFi STA + TCP + HTTP from Ruby | scan, association, served requests |
+| `app/wifi_status_dualcore.rb` | the same, plus a pinned C task on the second core (*not yet run on hardware*) | as above + sampler core, averaged vs raw battery |
 
 Details:
 
@@ -263,16 +273,31 @@ Details:
     accept and the read/write exchange separately; an RST storm that
     previously rebooted the board 3× now logs `accept error:`/`client
     error:` lines and keeps serving.
+- **`wifi_status_dualcore.rb` (#10)** — `wifi_status.rb` plus the second
+  core. `wifi_status.rb` itself stays the simple single-core example. On
+  the dual-core T-Display the Ruby VM runs on the APP core (core 1), away
+  from esp_wifi on core 0, via the app's own sdkconfig override
+  (`app/wifi_status_dualcore.sdkconfig.esp32`). A pinned C task
+  (`firmware/main/rt_tasks.c`) owns the battery ADC, samples every 20 ms
+  and keeps a 16-sample moving average; Ruby only reads the result over
+  FFI, so the screen never shows single-read ADC noise. The heartbeat logs
+  the average next to the latest raw read, the raw spread, and the core
+  the sampler runs on. The single-core C3 runs the same code with both on
+  core 0. No Ruby threads involved; see `docs/rt-tasks.md`.
 
 ## Repo layout
 
 ```
-app/          Ruby applications (the actual firmware logic)
-docs/         findings.md (runtime port research), plan.md (milestones), boards/
-firmware/     ESP-IDF project skeleton (CMakeLists, sdkconfig, app.c slot)
+app/          Ruby applications (the actual firmware logic), plus optional
+              per-app sdkconfig overrides (<name>.sdkconfig[.<target>])
+docs/         findings.md (runtime port research), plan.md (milestones), boards/,
+              rt-tasks.md (pinned C tasks beside the Ruby VM)
+firmware/     ESP-IDF project skeleton (CMakeLists, sdkconfig, app.c slot;
+              main/rt_tasks.c = pinned C tasks, started only by apps that
+              ask for them)
 shim/esp32/   FreeRTOS/newlib compatibility shim for libspinel_rt (the core work)
 tools/        build pipeline scripts (bootstrap, host compile, cross compile, flash,
-              monitor, release assets)
+              monitor, release assets, latency.sh = status-page latency probe)
 vendor/       git submodules (spinel)
 Makefile      friendly entry point over tools/ (setup, run, emit, flash, monitor)
 ```

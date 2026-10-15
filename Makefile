@@ -7,13 +7,14 @@
 #   make run   APP=app/hello.rb   Ruby -> C -> host binary -> run
 #   make emit  APP=app/blink.rb   Ruby -> C for the ESP32 (no build)
 #   make rt                       cross-build libspinel_rt (riscv32 default)
+#   make build APP=app/blink.rb   emit + idf.py build (no board needed)
 #   make flash APP=app/blink.rb   emit + idf.py build + flash + serial capture
 #   make monitor APP=app/blink.rb emit + build + flash + capture serial
 #   make size                     report the linked image size
 #   make clean                    remove build/ (keeps vendor/spinel artifacts)
 #
 # Variables:
-#   APP     path to the .rb (required for run/emit/flash/monitor)
+#   APP     path to the .rb (required for run/emit/build/flash/monitor)
 #   TARGET  esp32c3 (default) | esp32   -- which board to build for
 #   PORT    serial device (default /dev/ttyUSB0; also $SPINEL_ESP_PORT)
 #   RT      riscv32 (default) | esp32   -- which runtime archive to build
@@ -31,10 +32,10 @@ SHELL := /bin/bash
 BUILD_APP := tools/build-app.sh
 BUILD_RT  := tools/build-rt.sh
 
-.PHONY: help setup all deps host run emit rt rt-esp32 flash monitor size clean dist
+.PHONY: help setup all deps host run emit rt rt-esp32 build flash monitor size clean dist
 
 help:
-	@sed -n '2,28p' Makefile | sed 's/^# \{0,1\}//'
+	@sed -n '2,23p' Makefile | sed 's/^# \{0,1\}//'
 
 # ---- setup ----------------------------------------------------------------
 setup:
@@ -64,6 +65,10 @@ rt-esp32:
 	$(BUILD_RT) esp32
 
 # ---- firmware: build + flash + capture ------------------------------------
+build:
+	@test -n "$(APP)" || { echo "usage: make build APP=app/blink.rb [TARGET=esp32c3|esp32]"; exit 2; }
+	$(BUILD_APP) $(APP) --target=$(TARGET) --build
+
 flash:
 	@test -n "$(APP)" || { echo "usage: make flash APP=app/blink.rb [TARGET=esp32c3|esp32] [PORT=/dev/ttyUSB0]"; exit 2; }
 	SPINEL_ESP_PORT=$(PORT) $(BUILD_APP) $(APP) --target=$(TARGET) --flash

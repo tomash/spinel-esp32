@@ -1,0 +1,11 @@
+# app/wifi_status_dualcore.sdkconfig.esp32 -- sdkconfig override for this
+# app on classic ESP32 (T-Display) only. tools/build-app.sh layers it over
+# firmware/sdkconfig.defaults when building wifi_status_dualcore.rb with
+# --target=esp32; other apps and the C3 never see it.
+
+# Issue #10: run the Ruby VM (the IDF main task, see sp_app_adapter.c) on
+# the APP core. esp_wifi is pinned to core 0 (CONFIG_ESP_WIFI_TASK_PINNED_
+# TO_CORE_0, the default), so WiFi/lwIP and the Ruby loop no longer share
+# a core. The battery sampler (rt_tasks.c) also lands on core 1 at a
+# higher priority, but it wakes every 20 ms for a single ADC read.
+CONFIG_ESP_MAIN_TASK_AFFINITY_CPU1=y
