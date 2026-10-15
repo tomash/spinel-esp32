@@ -108,9 +108,16 @@ fi
 #   sp_str_shape[SP_STR_SHAPE_MAX]           8192*8 ->  64 KB, now 512*8 =  4 KB
 # Overflow behavior is graceful (heap-allocated extension segments for
 # roots; counts saturate for remembered/pinned/stats), see sp_gc.h:62-101.
+# Not BSS but sized the same way: the GC mark work list is malloc'd as ONE
+# block of SP_GC_MARK_STACK_MAX pointers on first collection (sp_gc.c) and
+# realloc-doubled when it fills, so this is a starting size, not a cap.
+# The 64K default is 256 KB on a 32-bit part -- never satisfiable here, so
+# every collection retried the malloc, failed, and marked recursively on
+# the C stack (measured on the C3: one failed 262144-byte malloc per GC).
+#   sp_gc_mark_stack[SP_GC_MARK_STACK_MAX]  65536*4 -> 256 KB, now 256*4 = 1 KB
 # SP_GC_STACK_MAX MUST match the app TU build (both sides consult it for
-# sp_gc_roots[] and the SP_GC_ROOT bound) -- tools/build-app.sh --target=esp32
-# passes the same list via SPINEL_ESP32_CFLAGS.
+# sp_gc_roots[] and the SP_GC_ROOT bound) -- keep this list identical to
+# the one in firmware/main/CMakeLists.txt.
 SHIM="$ROOT/shim/esp32"
 VENDOR="$ROOT/vendor/spinel"
 OUT="$ROOT/build/rt-$TARGET"
@@ -118,7 +125,8 @@ mkdir -p "$OUT"
 
 SP_SZ="-DSP_GC_STACK_MAX=4096 -DSP_GC_REMEMBERED_MAX=1024 -DSP_GC_PINNED_MAX=1024 \
   -DSP_ALLOC_STATS=512 -DSP_STR_SHAPE_MAX=512 \
-  -DSP_DYN_SYMS_MAX=256 -DSP_EXC_STACK_MAX=8 -DSP_CATCH_STACK_MAX=8"
+  -DSP_DYN_SYMS_MAX=256 -DSP_EXC_STACK_MAX=8 -DSP_CATCH_STACK_MAX=8 \
+  -DSP_GC_MARK_STACK_MAX=256"
 
 # Arch flags: riscv32 needs the exact C3 march/mabi; xtensa (windowed ABI,
 # soft-float defaults) must get NONE for core selection -- ESP32's windowed
