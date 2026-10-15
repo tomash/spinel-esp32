@@ -70,13 +70,17 @@ module ESP32
          pin -- the M4 under-read bug: CH0 drifted ~1.1-1.3V while the real
          divider output sat on CH2). Calibrated by the per-chip eFuse
          curve-fitting scheme.
-       - Classic ESP32 (T-Display): battery divider is GPIO36 = ADC1_CH0, and
-         the chip has no curve-fitting scheme -- only line fitting with a
-         default reference. The Ruby-side pin constant is board-specific;
-         this C only needs to compile and read correctly on both.
-       Divider 2:1 (100k/100k), same as battery.rb ---- */
+       - Classic ESP32 (T-Display): battery divider is GPIO34 = ADC1_CH6
+         (soc/adc_channel.h ADC1_GPIO34_CHANNEL 6). Earlier builds used
+         ADC_CHANNEL_0 (GPIO36), which is NOT the battery node on this board
+         and read ~0 V -- the "NO BATTERY" symptom. GPIO34 has no internal
+         pull, and the chip has no curve-fitting scheme -- only line fitting
+         with a default reference. The Ruby-side pin constant is
+         board-specific; this C only needs to compile and read correctly on
+         both.
+       Divider 2:1 (100k/100k): cell = 2 x pin. ---- */
     #if CONFIG_IDF_TARGET_ESP32
-      #define WS_ADC_CHANNEL ADC_CHANNEL_0   /* GPIO36, ADC1_CH0 */
+      #define WS_ADC_CHANNEL ADC_CHANNEL_6   /* GPIO34, ADC1_CH6 */
     #else
       #define WS_ADC_CHANNEL ADC_CHANNEL_2   /* GPIO2,  ADC1_CH2 */
     #endif
