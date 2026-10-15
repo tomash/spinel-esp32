@@ -23,8 +23,8 @@ int main(int argc, char **argv);
 void app_main(void)
 {
     /* The main task's core comes from CONFIG_ESP_MAIN_TASK_AFFINITY:
-       core 1 on classic ESP32 (sdkconfig.defaults.esp32), core 0 on the
-       single-core C3. */
+       core 0 by default; core 1 for apps whose sdkconfig override moves
+       it (app/wifi_status_dualcore.sdkconfig.esp32). */
     ESP_LOGI("spinel", "spinel app_main: calling generated main() on core %d",
              xPortGetCoreID());
     /* argc=0/argv=NULL: no ARGV on target; spinel's TU only stashes them. */

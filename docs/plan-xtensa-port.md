@@ -150,8 +150,9 @@ shim/esp32/include/ucontext.h    # unchanged (shared layout)
   `firmware-esp32/` dir if the CMake doesn't parametrize cleanly.
 - Key sdkconfig deltas from the C3 config:
   - `IDF_TARGET=esp32`
-  - *(Superseded by issue #10: the Ruby task now runs on the APP core, core 1, via
-    `firmware/sdkconfig.defaults.esp32`, still as a single task. See `docs/rt-tasks.md`.)*
+  - *(Revisited in #10: core 0 stays the default, but `app/wifi_status_dualcore.rb` runs the
+    Ruby task on the APP core, core 1, via its own sdkconfig override, still as a single
+    task. See `docs/rt-tasks.md`.)*
   - **Dual-core**: keep D3 (single-task Ruby) — pin the Ruby task to **PRO_CPU (core 0)**
     (`CONFIG_ESP_TASK_MAIN_CORE` / `xTaskCreatePinnedToCore` in `sp_app_adapter.c` —
     check how the main task is spawned there; if it currently uses plain
@@ -231,8 +232,8 @@ port inherits OTA for free (same `esp_ota_*` calls are target-agnostic).
 - ST7789 display driver is explicitly **out of scope** for this milestone (separate
   later work) — do not start it even though the board tempts you with its screen.
 - Dual-core: keep D3 (single-task Ruby) — pin to core 0, don't get creative.
-  *(Later revisited in #10: still single-task Ruby, but on core 1, plus pinned C
-  tasks; see `docs/rt-tasks.md`.)*
+  *(Revisited in #10: core 0 stays the default; `app/wifi_status_dualcore.rb` shows
+  single-task Ruby on core 1 plus pinned C tasks. See `docs/rt-tasks.md`.)*
 - Multi-line git commits via PTY will fail — write to `/tmp/*.sh` and bash it.
 - Serial monitor noise: `grep -a`.
 - `sdkconfig` is generated — edit `sdkconfig.defaults`, not `sdkconfig`, then reconfigure.

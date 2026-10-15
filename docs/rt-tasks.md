@@ -6,7 +6,9 @@ the GC, every object. That stays true. What this adds is a place for
 nothing but integers. This uses the classic ESP32's second core without
 touching spinel's threading model (`SP_THREADS` stays off).
 
-Code: `firmware/main/rt_tasks.c`. First user: `app/wifi_status.rb`.
+Code: `firmware/main/rt_tasks.c`. Example app: `app/wifi_status_dualcore.rb`,
+which is `app/wifi_status.rb` plus the second core. `wifi_status.rb` itself
+stays the simple single-core example and uses none of this.
 
 ## Why not Ruby `Thread`s on the other core
 
@@ -18,6 +20,8 @@ job turns up that C tasks can't do.
 
 ## Who runs where
 
+For `wifi_status_dualcore.rb`:
+
 | Task | Classic ESP32 (T-Display) | ESP32-C3 (T-OI Plus) | Priority |
 |------|---------------------------|----------------------|----------|
 | esp_wifi | core 0 (IDF default pin) | core 0 | 23 |
@@ -26,10 +30,13 @@ job turns up that C tasks can't do.
 | Ruby VM (IDF main task) | **core 1** | core 0 | 1 |
 | idle | both cores | core 0 | 0 |
 
-- **Ruby VM on the APP core:** `firmware/sdkconfig.defaults.esp32` sets
-  `CONFIG_ESP_MAIN_TASK_AFFINITY_CPU1=y`. IDF reads that file only when
-  `IDF_TARGET=esp32`, so the C3 build is unchanged. With WiFi on core 0,
-  the Ruby loop and the network stack no longer compete for one CPU.
+- **Ruby VM on the APP core:** the app's sdkconfig override,
+  `app/wifi_status_dualcore.sdkconfig.esp32`, sets
+  `CONFIG_ESP_MAIN_TASK_AFFINITY_CPU1=y`. `tools/build-app.sh` layers it
+  over `firmware/sdkconfig.defaults` only when building this app for
+  `esp32`, so other apps and the C3 keep the Ruby VM on core 0. With WiFi
+  on core 0, the Ruby loop and the network stack no longer compete for one
+  CPU.
   `sp_app_adapter.c` logs the core at boot:
   `spinel app_main: calling generated main() on core 1`.
 - **Sampler:** pinned with `xTaskCreatePinnedToCore(..., SP_BATT_CORE)`,
@@ -41,9 +48,11 @@ job turns up that C tasks can't do.
   calibration, a few tens of µs. That is noise for the VM, and it keeps
   the sampler's timing steady however busy Ruby gets.
 
-Sticky sdkconfig: an already-configured `firmware/sdkconfig` keeps its old
-affinity. `tools/build-app.sh` runs `idf.py set-target`, which regenerates
-the file. If you drive `idf.py` by hand, delete `firmware/sdkconfig` once.
+Sticky sdkconfig: build through `tools/build-app.sh` (or `make
+build|flash`). It runs `idf.py set-target`, which regenerates
+`firmware/sdkconfig`, and it passes the full `SDKCONFIG_DEFAULTS` list on
+every `idf.py` call, so an override never leaks into the next app built.
+A bare `idf.py build` uses whatever the last configure left behind.
 
 ## Battery sampler
 
@@ -80,7 +89,7 @@ cell_v = ESP32.esp32_batt_avg_mv * 2 / 1000.0   # 2:1 divider
 ```
 
 `rt_tasks.c` also defines `esp32_batt_errors()` (failed reads), but
-`wifi_status.rb` doesn't declare it.
+`wifi_status_dualcore.rb` doesn't declare it.
 
 ### Sharing rules (keep these for any future task)
 
@@ -95,7 +104,7 @@ cell_v = ESP32.esp32_batt_avg_mv * 2 / 1000.0   # 2:1 divider
 - The core id comes from inside the task (`xPortGetCoreID()`), not from
   the pinning constant, so the logs show where the task actually ran.
 
-## What `wifi_status.rb` shows
+## What `wifi_status_dualcore.rb` shows
 
 - The LCD footer, the status page and the boot screen all show the
   **average**, never a single read.
@@ -112,9 +121,15 @@ cell_v = ESP32.esp32_batt_avg_mv * 2 / 1000.0   # 2:1 divider
 
 ## Measuring the effect
 
-Compare three builds: (A) `main` before #10, (B) only the
-`sdkconfig.defaults.esp32` change (Ruby VM on core 1), (C) this branch. Use
-the same board, the same AP and a steady supply.
+Compare three builds on the T-Display, with the same AP and a steady supply:
+
+- **(A)** `app/wifi_status.rb`, the baseline: Ruby on core 0, direct ADC
+  reads.
+- **(B)** the VM move alone: `app/wifi_status.rb` with a temporary copy of
+  the override,
+  `cp app/wifi_status_dualcore.sdkconfig.esp32 app/wifi_status.sdkconfig.esp32`
+  (delete it afterwards).
+- **(C)** `app/wifi_status_dualcore.rb`: VM move plus sampler.
 
 1. **ADC noise:** capture serial for about 2 minutes (`tools/monitor.py`
    with `SPINEL_ESP_CAPTURE=120`). For (A), the spread of the displayed
