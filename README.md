@@ -263,16 +263,28 @@ Details:
     accept and the read/write exchange separately; an RST storm that
     previously rebooted the board 3× now logs `accept error:`/`client
     error:` lines and keeps serving.
+- **`wifi_status.rb` (second core, #10)** — on the dual-core T-Display the
+  Ruby VM runs on the APP core (core 1), away from esp_wifi on core 0
+  (`firmware/sdkconfig.defaults.esp32`). A pinned C task
+  (`firmware/main/rt_tasks.c`) owns the battery ADC, samples every 20 ms
+  and keeps a 16-sample moving average; Ruby only reads the result over
+  FFI, so the screen never shows single-read ADC noise. The heartbeat logs
+  the average next to the latest raw read, the raw spread, and the core
+  the sampler runs on. The single-core C3 runs the same code with both on
+  core 0. No Ruby threads involved; see `docs/rt-tasks.md`.
 
 ## Repo layout
 
 ```
 app/          Ruby applications (the actual firmware logic)
-docs/         findings.md (runtime port research), plan.md (milestones), boards/
-firmware/     ESP-IDF project skeleton (CMakeLists, sdkconfig, app.c slot)
+docs/         findings.md (runtime port research), plan.md (milestones), boards/,
+              rt-tasks.md (pinned C tasks beside the Ruby VM)
+firmware/     ESP-IDF project skeleton (CMakeLists, sdkconfig, app.c slot;
+              main/rt_tasks.c = pinned C tasks, sdkconfig.defaults.esp32 =
+              classic-ESP32-only overrides)
 shim/esp32/   FreeRTOS/newlib compatibility shim for libspinel_rt (the core work)
 tools/        build pipeline scripts (bootstrap, host compile, cross compile, flash,
-              monitor, release assets)
+              monitor, release assets, latency.sh = status-page latency probe)
 vendor/       git submodules (spinel)
 Makefile      friendly entry point over tools/ (setup, run, emit, flash, monitor)
 ```
