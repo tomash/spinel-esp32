@@ -13,6 +13,7 @@
  */
 
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
 
 /* Not including spinel_rt.h: it has non-inline definitions, and the
  * generated app.c (same component) already compiles them once. Just
@@ -21,7 +22,11 @@ int main(int argc, char **argv);
 
 void app_main(void)
 {
-    ESP_LOGI("spinel", "spinel app_main: calling generated main()");
+    /* The main task's core comes from CONFIG_ESP_MAIN_TASK_AFFINITY:
+       core 1 on classic ESP32 (sdkconfig.defaults.esp32), core 0 on the
+       single-core C3. */
+    ESP_LOGI("spinel", "spinel app_main: calling generated main() on core %d",
+             xPortGetCoreID());
     /* argc=0/argv=NULL: no ARGV on target; spinel's TU only stashes them. */
     int rc = main(0, NULL);
     ESP_LOGI("spinel", "spinel app: main() returned %d", rc);

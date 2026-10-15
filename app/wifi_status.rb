@@ -4,7 +4,7 @@
 # page (LED state, battery cell voltage, WiFi details) over HTTP -- a
 # polling architecture, no blocking accept loop and no threads: one
 # main loop waits on poll(2) with a small timeout and serves at most
-# one request per tick, while also polling the ADC and the WiFi state.
+# one request per tick, while also polling the battery average and WiFi.
 #
 # M4b: the index page links to /led/toggle, which flips the on-board
 # LED (GPIO3) and re-serves the index. LED state lives in this process;
@@ -13,7 +13,9 @@
 # Two halves:
 #   * WiFi + ADC via the FFI DSL (same module shape as blink.rb /
 #     battery.rb): esp_wifi STA bring-up, esp_wifi_sta_get_ap_info for
-#     RSSI/channel/SSID, adc_oneshot for the battery divider.
+#     RSSI/channel/SSID. The battery divider is sampled by a pinned C
+#     task (firmware/main/rt_tasks.c, core 1 on dual-core parts) that
+#     keeps a 16-sample moving average; Ruby only reads the result.
 #   * sockets via spinel's built-in TCPServer (#2922): `require "socket"`
 #     is a native no-op that gates the class typing; TCPServer.new maps
 #     to sp_net_listen_host, accept_nonblock(exception: false) to
@@ -55,8 +57,6 @@ module ESP32
     #include "esp_event.h"
     #include "esp_netif.h"
     #include "nvs_flash.h"
-    #include "esp_adc/adc_oneshot.h"
-    #include "esp_adc/adc_cali.h"
     #include "mdns.h"
     #include "esp_sntp.h"
     #include "esp_heap_caps.h"
@@ -64,70 +64,6 @@ module ESP32
     #include "string.h"
     #include "stdint.h"
     #include "errno.h"
-
-    /* ---- battery ADC. Channel and calibration scheme differ per target:
-       - ESP32-C3: GPIO2 = ADC1_CH2 (NOT CH0; CH0 is GPIO0, a floating Grove
-         pin -- the M4 under-read bug: CH0 drifted ~1.1-1.3V while the real
-         divider output sat on CH2). Calibrated by the per-chip eFuse
-         curve-fitting scheme.
-       - Classic ESP32 (T-Display): battery divider is GPIO34 = ADC1_CH6
-         (soc/adc_channel.h ADC1_GPIO34_CHANNEL 6). Earlier builds used
-         ADC_CHANNEL_0 (GPIO36), which is NOT the battery node on this board
-         and read ~0 V -- the "NO BATTERY" symptom. GPIO34 has no internal
-         pull, and the chip has no curve-fitting scheme -- only line fitting
-         with a default reference. The Ruby-side pin constant is
-         board-specific; this C only needs to compile and read correctly on
-         both.
-       Divider 2:1 (100k/100k): cell = 2 x pin. ---- */
-    #if CONFIG_IDF_TARGET_ESP32
-      #define WS_ADC_CHANNEL ADC_CHANNEL_6   /* GPIO34, ADC1_CH6 */
-    #else
-      #define WS_ADC_CHANNEL ADC_CHANNEL_2   /* GPIO2,  ADC1_CH2 */
-    #endif
-    static adc_oneshot_unit_handle_t ws_adc_unit = NULL;
-    static adc_cali_handle_t ws_adc_cali = NULL;
-    static int ws_adc_inited = 0;
-
-    int esp32_adc_init(void) {
-        if (ws_adc_inited) return 0;
-        adc_oneshot_unit_init_cfg_t unit = {
-            .unit_id = ADC_UNIT_1, .ulp_mode = ADC_ULP_MODE_DISABLE,
-        };
-        if (adc_oneshot_new_unit(&unit, &ws_adc_unit) != ESP_OK) return -1;
-        adc_oneshot_chan_cfg_t chan = {
-            .bitwidth = ADC_BITWIDTH_DEFAULT, .atten = ADC_ATTEN_DB_12,
-        };
-        if (adc_oneshot_config_channel(ws_adc_unit, WS_ADC_CHANNEL, &chan) != ESP_OK)
-            return -2;
-    #if CONFIG_IDF_TARGET_ESP32
-        adc_cali_line_fitting_config_t cc = {
-            .unit_id = ADC_UNIT_1,
-            .bitwidth = ADC_BITWIDTH_DEFAULT, .atten = ADC_ATTEN_DB_12,
-            .default_vref = 1100, /* mV; used only if eFuse VREF is unburnt */
-        };
-        adc_cali_create_scheme_line_fitting(&cc, &ws_adc_cali); /* optional */
-    #else
-        adc_cali_curve_fitting_config_t cc = {
-            .unit_id = ADC_UNIT_1, .chan = WS_ADC_CHANNEL,
-            .bitwidth = ADC_BITWIDTH_DEFAULT, .atten = ADC_ATTEN_DB_12,
-        };
-        adc_cali_create_scheme_curve_fitting(&cc, &ws_adc_cali); /* optional */
-    #endif
-        ws_adc_inited = 1;
-        return 0;
-    }
-
-    /* Calibrated battery pin voltage in mV, or negative on failure. */
-    int esp32_adc_read_mv(void) {
-        if (!ws_adc_inited) return -1;
-        int raw = -1;
-        if (adc_oneshot_read(ws_adc_unit, WS_ADC_CHANNEL, &raw) != ESP_OK) return -2;
-        if (ws_adc_cali) {
-            int mv = -1;
-            if (adc_cali_raw_to_voltage(ws_adc_cali, raw, &mv) == ESP_OK) return mv;
-        }
-        return -3; /* cali unavailable */
-    }
 
     /* ---- WiFi STA (esp_wifi; connect via event loop) ---- */
     static int ws_sta_got_ip = 0;
@@ -437,8 +373,15 @@ module ESP32
     }
   C
 
-  ffi_func :esp32_adc_init,     [], :int
-  ffi_func :esp32_adc_read_mv, [], :int
+  # Battery sampler (driver: firmware/main/rt_tasks.c) -- a C task pinned
+  # to core 1 (core 0 on the single-core C3) owns ADC1 and keeps a
+  # 16-sample moving average; these only read its published snapshot.
+  ffi_func :esp32_batt_sampler_start, [], :int
+  ffi_func :esp32_batt_avg_mv,        [], :int
+  ffi_func :esp32_batt_last_mv,       [], :int
+  ffi_func :esp32_batt_spread_mv,     [], :int
+  ffi_func :esp32_batt_samples,       [], :int
+  ffi_func :esp32_batt_core,          [], :int
   ffi_func :esp32_led_init,     [:int], :int
   ffi_func :esp32_led_write,    [:int, :int], :int
   ffi_func :esp32_board_name,   [], :str
@@ -616,7 +559,8 @@ if rc != 0
   puts "esp32_wifi_init failed: #{rc}"
   abort "wifi init failed"
 end
-ESP32.esp32_adc_init()
+rc = ESP32.esp32_batt_sampler_start()
+puts rc == 0 ? "battery sampler: started" : "battery sampler: start failed (#{rc})"
 puts "Scanning (2.4G) ..."
 n = ESP32.esp32_wifi_scan()
 puts "Scan found #{n} networks"
@@ -653,7 +597,7 @@ puts "Serving status on 0.0.0.0:#{PORT} (polling loop, no threads)"
 if ESP32.esp32_wifi_connected != 0
   ESP32.esp32_wifi_ip(ip_buf, 48)
   show_ip = ip_buf.delete("\0").strip
-  mv = ESP32.esp32_adc_read_mv()
+  mv = ESP32.esp32_batt_avg_mv()
   cell0 = mv >= 0 ? ((mv * DIVIDER) / 1000.0).round(2) : 0.0
   lcd_show_running(show_ip, mdns_host, cell0)
   puts "LCD: running screen (#{show_ip} / #{mdns_host}.local)"
@@ -1001,7 +945,7 @@ loop do
       next
     end
 
-    mv = ESP32.esp32_adc_read_mv()
+    mv = ESP32.esp32_batt_avg_mv()
     cell_v = mv >= 0 ? ((mv * DIVIDER) / 1000.0).round(2) : 0.0
     # -- M5b: wall time (once NTP has synced) on the page --
     time_s = "(not synced)"
@@ -1038,10 +982,15 @@ loop do
   # -- slow-poll housekeeping: log battery; LED no longer blinks -- the
   #     toggle endpoint owns it now (state lives in this process) --
   if (loop_count % 50) == 0
-    mv = ESP32.esp32_adc_read_mv()
+    mv = ESP32.esp32_batt_avg_mv()
     if mv >= 0
       cell = ((mv * DIVIDER) / 1000.0).round(2)
+      # avg / last single read / raw spread over the last second, all pin
+      # mV: the spread is the ADC noise the moving average keeps off screen.
       puts "[#{loop_count}] idle; cell #{cell}V " \
+           "batt avg #{mv} last #{ESP32.esp32_batt_last_mv()} " \
+           "spread #{ESP32.esp32_batt_spread_mv()} n #{ESP32.esp32_batt_samples()} " \
+           "core #{ESP32.esp32_batt_core()} " \
            "heap #{ESP32.esp32_heap_free()} (min #{ESP32.esp32_heap_min_free()}, " \
            "largest #{ESP32.esp32_heap_largest_block()})"
       lcd_battery_line(cell)   # footer refresh ~ every 1 s (50 ticks x 20 ms)
