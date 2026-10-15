@@ -11,6 +11,7 @@
 #   tools/build-app.sh app/hello.rb --emit-only           # stop after C generation
 #   tools/build-app.sh app/hello.rb --target=esp32        # emit C (esp32 target)
 #   tools/build-app.sh app/hello.rb --target=esp32c3      # emit C (C3, same as esp32 today)
+#   tools/build-app.sh app/hello.rb --target=esp32 --build    # + copy, idf.py build (no board needed)
 #   tools/build-app.sh app/hello.rb --target=esp32 --flash    # + copy, idf.py build & flash
 #   tools/build-app.sh app/hello.rb --target=esp32 --flash --monitor  # + capture serial output
 set -euo pipefail
@@ -25,9 +26,10 @@ PORT="${SPINEL_ESP_PORT:-/dev/ttyUSB0}"
 MONITOR="${SPINEL_ESP_MONITOR:-$ROOT/tools/monitor.py}"
 SECONDS_OUT="${SPINEL_ESP_CAPTURE:-12}"
 
-rb="${1:?usage: build-app.sh <file.rb> [--emit-only|--target=esp32|--flash|--monitor]}"
+rb="${1:?usage: build-app.sh <file.rb> [--emit-only|--target=esp32|--build|--flash|--monitor]}"
 shift || true
 mode=""
+want_build=0
 want_flash=0
 want_monitor=0
 TARGET="esp32c3"
@@ -36,6 +38,7 @@ while [[ $# -gt 0 ]]; do
     --emit-only)   mode="--emit-only" ;;
     --target=esp32) mode="--target=esp32"; TARGET="esp32" ;;
     --target=esp32c3) mode="--target=esp32"; TARGET="esp32c3" ;;
+    --build)       want_build=1 ;;
     --flash)       want_flash=1 ;;
     --monitor)     want_monitor=1; want_flash=1 ;;
     *) echo "build-app.sh: unknown arg $1" >&2; exit 2 ;;
@@ -59,10 +62,10 @@ echo "==> spinel C generation: $rb"
 # NB: -S writes generated C to stdout; -o only names the binary output.
 # --target=esp32: --cc= the cross gcc, so spinel's popen(-E -dM) probe reads
 # __SIZEOF_POINTER__=4 and infers 32-bit ints (sp_int=long long stays 64).
-if [[ "$mode" == "--target=esp32" || $want_flash -eq 1 || $want_monitor -eq 1 ]]; then
+if [[ "$mode" == "--target=esp32" || $want_build -eq 1 || $want_flash -eq 1 || $want_monitor -eq 1 ]]; then
   "$SPINEL" "$rb" -S --cc="$XGCC" > "$OUT/$base.c"
   echo "==> emitted $OUT/$base.c ($(wc -l < "$OUT/$base.c") lines) -- target=esp32"
-  if [[ $want_flash -eq 0 && $want_monitor -eq 0 ]]; then
+  if [[ $want_build -eq 0 && $want_flash -eq 0 && $want_monitor -eq 0 ]]; then
     exit 0
   fi
 
@@ -83,19 +86,37 @@ if [[ "$mode" == "--target=esp32" || $want_flash -eq 1 || $want_monitor -eq 1 ]]
     echo "==> wrote firmware/main/wifi_secrets.h (SSID $WIFI_SSID)"
   fi
 
+  # Per-app sdkconfig overrides: app/<name>.sdkconfig (any target) and
+  # app/<name>.sdkconfig.<target>, layered over firmware/sdkconfig.defaults
+  # for this app only (e.g. wifi_status_dualcore pins the Ruby VM to core 1
+  # on esp32). SDKCONFIG_DEFAULTS is passed on every idf.py call, overrides
+  # or not: CMake caches it, so a stale list from the previous app would
+  # otherwise carry over.
+  sdk_defaults="$ROOT/firmware/sdkconfig.defaults"
+  for f in "${rb%.rb}.sdkconfig" "${rb%.rb}.sdkconfig.$TARGET"; do
+    if [[ -f "$f" ]]; then
+      sdk_defaults+=";$(cd "$(dirname "$f")" && pwd)/$(basename "$f")"
+      echo "==> app sdkconfig override: $f"
+    fi
+  done
+  idf_defs=(-D "SDKCONFIG_DEFAULTS=$sdk_defaults")
+
   echo "==> idf.py set-target $TARGET (regenerates sdkconfig from defaults)"
   ( cd "$ROOT/firmware" && source "$IDF_EXPORT" >/dev/null 2>&1 \
-      && idf.py set-target "$TARGET" )
+      && idf.py "${idf_defs[@]}" set-target "$TARGET" )
 
   echo "==> idf.py build (ESP-IDF $(basename "$(dirname "$IDF_EXPORT")"))"
   # shellcheck disable=SC1090
   ( cd "$ROOT/firmware" && source "$IDF_EXPORT" >/dev/null 2>&1 \
-      && idf.py build )
+      && idf.py "${idf_defs[@]}" build )
   echo "==> image: $(ls -l "$ROOT/firmware/build/spinel_esp32_app.bin" | awk '{print $5" bytes"}')"
+  if [[ $want_flash -eq 0 && $want_monitor -eq 0 ]]; then
+    exit 0
+  fi
 
   echo "==> idf.py -p $PORT flash"
   ( cd "$ROOT/firmware" && source "$IDF_EXPORT" >/dev/null 2>&1 \
-      && idf.py -p "$PORT" flash )
+      && idf.py "${idf_defs[@]}" -p "$PORT" flash )
   echo "==> flashed ok"
 
   if [[ $want_monitor -eq 1 ]]; then
