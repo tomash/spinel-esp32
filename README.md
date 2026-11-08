@@ -82,7 +82,7 @@ Verify:
 
 ```bash
 vendor/spinel/bin/spinel --version
-# spinel 2026.09.12+9032 (6604788ef) [...]
+# spinel 2026.09.12+16444 (4cb572560) [...]
 ```
 
 ### 3. Install ESP-IDF (the cross toolchain)
@@ -270,9 +270,11 @@ Details:
 app/          Ruby applications (the actual firmware logic)
 docs/         findings.md (runtime port research), plan.md (milestones), boards/
 firmware/     ESP-IDF project skeleton (CMakeLists, sdkconfig, app.c slot)
+presets/      runtime capacity macros (default.defs, small.defs), shared by the
+              runtime build and the firmware build
 shim/esp32/   FreeRTOS/newlib compatibility shim for libspinel_rt (the core work)
 tools/        build pipeline scripts (bootstrap, host compile, cross compile, flash,
-              monitor, release assets)
+              monitor, release assets, size-report, preset-stress)
 vendor/       git submodules (spinel)
 Makefile      friendly entry point over tools/ (setup, run, emit, flash, monitor)
 ```
@@ -296,6 +298,40 @@ So the submodule points at upstream alone — no fork, no carried diff. To move
 the pin forward, check out a newer upstream commit in `vendor/spinel`, bump
 `SPINEL_PIN`, and (for Releases) republish the runtime assets under the new
 tag with `tools/release-assets.sh publish`.
+
+Moving the pin from `6604788e` to `4cb57256` (~7,400 upstream commits) took
+four changes on this side, all needed for the apps to run again:
+
+- `tools/build-rt.sh` follows the tree's own `RT_MEMBERS` and the defines its
+  Makefile forces on the runtime (`-DSP_ONE_STRING`: one String
+  representation; without it the archive mismatches the generated C).
+- `shim/esp32/include/sys/termios.h` for the new io/console support.
+- `shim/esp32/include/stdio.h` keeps stdout line-buffered: upstream now makes
+  a tty's stdout unbuffered, and ESP-IDF's stdout is shared by every task, so
+  the 2304-byte `sys_evt` task overflowed its stack on its first log line.
+- `presets/default.defs` shrinks the runtime's static tables. Upstream grew
+  them (scheduler tables for 256 workers, 16 KB read buffers per socket), and
+  with the old sizes `wifi_status` had ~33 KB free and its OTA transfer died
+  with `NoMemoryError`. Now it idles at ~90 KB free.
+
+### Capacity presets
+
+`presets/<name>.defs` lists the runtime's capacity macros once, for both the
+runtime archive (`tools/build-rt.sh`) and the app's compile (the firmware
+CMake), so the two cannot disagree. `default` is what every build uses.
+`small` adds the knobs from spinel's
+[size-floor switches](https://github.com/tomash/spinel/tree/size-floor-switches)
+(proposed upstream: the allocation report compiled out, `--no-bigint`, a
+sized fiber stack cache); with them `wifi_status` idles at ~103 KB free:
+
+```bash
+export SPINEL_SRC=/path/to/spinel-with-the-switches
+SPINEL_PRESET=small tools/build-rt.sh
+(cd firmware && idf.py fullclean)   # the preset is read when CMake configures
+SPINEL_PRESET=small SPINEL_FLAGS=--no-bigint make flash APP=app/wifi_status.rb
+```
+
+Measurements and the reasoning behind each value: `docs/size-floor.md`.
 
 [pr8792]: https://github.com/matz/spinel/pull/8792
 [pr8819]: https://github.com/matz/spinel/pull/8819

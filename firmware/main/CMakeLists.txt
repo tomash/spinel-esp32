@@ -55,6 +55,15 @@ foreach(_sym
     lwip_freeaddrinfo)
     target_link_options(${COMPONENT_LIB} PUBLIC "-Wl,-u,${_sym}")
 endforeach()
+# 3. Xtensa only: IDF links with --wrap=longjmp, so the RT's longjmp calls
+#    (exceptions: sp_raise_cls, sp_raise_stack_overflow) become
+#    __wrap_longjmp, which lives in libesp_rom.a (patches/esp_rom_longjmp.S),
+#    also early on the line. wifi_status happened to pull it in through
+#    another path; the T-Display demos did not, and failed to link on spinel
+#    master ("undefined reference to __wrap_longjmp").
+if(SPINEL_IDF_TARGET STREQUAL "esp32")
+    target_link_options(${COMPONENT_LIB} PUBLIC "-Wl,-u,__wrap_longjmp")
+endif()
 # spinel's header-heavy style trips unused-function warnings; IDF compiles
 # with -Werror=all by default, and -Wno-error cannot undo -Werror=all once
 # expanded. The RT archive was built -Wno-all for the same reason; the

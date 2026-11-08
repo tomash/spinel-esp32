@@ -6,15 +6,55 @@
 # runtime archive and the generated C cannot disagree: several of these size
 # arrays both sides index (sp_gc_roots, the exception stacks).
 #
-# This is the configuration every app in app/ was verified with on the
-# T-OI Plus (ESP32-C3) and the T-Display (ESP32). Measured static RAM of the
-# runtime with it: ~48 KB (docs/size-floor.md).
-SP_GC_STACK_MAX=4096
-SP_GC_REMEMBERED_MAX=1024
-SP_GC_PINNED_MAX=1024
-SP_ALLOC_STATS=512
-SP_STR_SHAPE_MAX=512
-SP_DYN_SYMS_MAX=256
-SP_GC_MARK_STACK_MAX=256
+# Every knob here exists in upstream spinel (pin in SPINEL_PIN). They are
+# sized for a part with tens of KB of free SRAM, from how the runtime behaves
+# when each table fills (read from spinel master, 2026-11-08). The GC torture
+# corpus passes with them on the host (tools/preset-stress.sh), and the apps
+# in app/ were run with them on the T-OI Plus, including wifi_status's RST
+# storm and OTA round trips (docs/size-floor.md). presets/small.defs adds the
+# knobs that need spinel's size-floor switches.
+#
+# Spinel master needs them: after the pin moved past 6604788e, the previous
+# values (GC roots 4096, remembered/pinned 1024, 256 scheduler workers) left
+# wifi_status ~33 KB of free heap, and an OTA transfer died with NoMemoryError
+# (each buffered socket now holds a 16 KB read buffer).
+
+# Allocation report: the stats table at its minimum (the report is off unless
+# SPINEL_ALLOC_REPORT is set, which nothing does on a microcontroller).
+SP_ALLOC_STATS=1
+
+# GC root stack: past SP_GC_STACK_MAX roots spill to a heap segment grown on
+# demand (sp_gc.c sp_gc_roots_ext), so this is the no-malloc fast region,
+# not a limit. 4096 -> 512: 16 KB -> 2 KB.
+SP_GC_STACK_MAX=512
+
+# Remembered and pinned sets are read only by the generational (minor) mark,
+# which is off unless SPINEL_GC_MINOR asks for it; a full table sets an
+# overflow flag that just forces a full mark. 1024 -> 32 each.
+SP_GC_REMEMBERED_MAX=32
+SP_GC_PINNED_MAX=32
+
+# Ring buffer of recent string sizes (allocator statistics).
+SP_STR_SHAPE_MAX=32
+
+# Symbols interned at run time (String#to_sym, JSON keys).
+SP_DYN_SYMS_MAX=64
+
+# Initial mark work list (malloc'd on first collection, realloc-doubled).
+SP_GC_MARK_STACK_MAX=128
+
+# begin/rescue nesting: exceeding it aborts ("rescue nesting too deep"), so
+# it stays at 8; catch/throw nesting is rarer: 4. Each frame is a jmp_buf
+# plus bookkeeping (~300 B on riscv32).
 SP_EXC_STACK_MAX=8
-SP_CATCH_STACK_MAX=8
+SP_CATCH_STACK_MAX=4
+
+# Per-worker scheduler tables (run queues, timer stages) are sized by
+# SP_MAX_WORKERS even in the single-threaded runtime, which only ever uses
+# worker 0 and clamps every index into range: 16 KB in wifi_status at 256.
+SP_MAX_WORKERS=1
+
+# Fiber stack cache: how many finished fibers' stacks are kept for reuse
+# (each one is heap the program cannot use). Its static table stays sized
+# for 1024 until SP_FIBER_STACK_CACHE_MAX lands (presets/small.defs).
+SP_FIBER_STACK_CACHE=2

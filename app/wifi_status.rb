@@ -780,6 +780,7 @@ def ota_download(host, port, path, force: false)
     end
     # ---- body: 4 KB non-blocking reads straight into ota_write ----
     first = true
+    chunks = 0
     while true
       if first && !rest.empty?
         # body bytes that arrived with the final header chunk
@@ -840,6 +841,13 @@ def ota_download(host, port, path, force: false)
       rc = ESP32.esp32_ota_write(buf, got)
       raise "ota_write failed (#{rc})" if rc != 0
       written += got
+      # GC checkpoint every 8 chunks (~32 KB): each read_nonblock answers a
+      # fresh 4 KB String, and on spinel master (one String representation,
+      # payloads in the object heap) the churn trigger alone let them pile
+      # up past the free heap at the default preset -- NoMemoryError in
+      # read_nonblock right after ota_begin, with ~50 KB free at idle.
+      chunks += 1
+      ESP32.esp32_gc_step() if (chunks % 8) == 0
       break if total && written >= total
     end
     raise "truncated: got #{written}, expected #{total}" if total && written < total

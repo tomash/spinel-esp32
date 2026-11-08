@@ -1,49 +1,31 @@
-# presets/small.defs -- the static-RAM diet: runtime capacity sized for parts
-# with tens of KB of SRAM (STM32F4xx, SAMD21, ESP32-C3 with WiFi up).
-# Format and consumers: see presets/default.defs.
+# presets/small.defs -- presets/default.defs plus the knobs that need
+# spinel's size-floor switches (tomash/spinel size-floor-switches, proposed
+# upstream). Format and consumers: see presets/default.defs.
 #
-# Each value is chosen from how the runtime behaves when the table fills,
-# read from spinel master (2026-11-08):
+# Build against that tree: SPINEL_SRC=<it> SPINEL_PRESET=small, and add
+# SPINEL_FLAGS=--no-bigint for the matching compiler switch. On a spinel
+# without the switches the two extra defines are ignored, so the preset still
+# builds and behaves as default.
+#
+# Measured on the T-OI Plus, wifi_status idle free heap: default preset on
+# upstream 90.6 KB; this preset on the switches tree 102.9 KB.
 
-# Allocation report compiled out entirely (needs spinel with
-# SP_NO_ALLOC_REPORT): drops the stats table, the type-name table (4 KB, not
-# sized by any knob) and the reporter's constructor and code.
+# Allocation report compiled out entirely: drops the stats and type-name
+# tables (4 KB, not sized by any knob) and the reporter's constructor and code.
 SP_NO_ALLOC_REPORT
 
-# GC root stack: past SP_GC_STACK_MAX roots spill to a heap segment grown on
-# demand (sp_gc.c sp_gc_roots_ext), so this is the no-malloc fast region,
-# not a limit. 4096 -> 512: 16 KB -> 2 KB.
-SP_GC_STACK_MAX=512
+# Fiber stack cache table sized for the 2 it keeps instead of 1024 (8 KB).
+SP_FIBER_STACK_CACHE_MAX=2
 
-# Remembered and pinned sets are read only by the generational (minor) mark,
-# which is off unless SPINEL_GC_MINOR asks for it; a full table sets an
-# overflow flag that just forces a full mark. 1024 -> 32 each: 8 KB -> 256 B.
+# --- presets/default.defs, verbatim (see there for the reasons) ---
+SP_ALLOC_STATS=1
+SP_GC_STACK_MAX=512
 SP_GC_REMEMBERED_MAX=32
 SP_GC_PINNED_MAX=32
-
-# Ring buffer of recent string sizes (allocator statistics): 512 -> 32.
 SP_STR_SHAPE_MAX=32
-
-# Symbols interned at run time (String#to_sym, JSON keys). 256 -> 64.
 SP_DYN_SYMS_MAX=64
-
-# Initial mark work list (malloc'd on first collection, realloc-doubled).
 SP_GC_MARK_STACK_MAX=128
-
-# begin/rescue nesting: exceeding it aborts ("rescue nesting too deep"), so
-# it stays at 8; catch/throw nesting is rarer: 8 -> 4. Each frame is a
-# jmp_buf plus bookkeeping (~300 B on riscv32).
 SP_EXC_STACK_MAX=8
 SP_CATCH_STACK_MAX=4
-
-# Per-worker scheduler tables (run queues, timer stages) are sized by
-# SP_MAX_WORKERS even in the single-threaded runtime, which only ever uses
-# worker 0 and clamps every index into range.
 SP_MAX_WORKERS=1
-
-# Fiber stack cache: keeps finished fibers' stacks for reuse, 32 by default
-# in a static table sized for 1024 (8 KB on 32-bit). Two is plenty for the
-# handful of fibers an MCU program runs, and each cached stack is heap the
-# program cannot use. (SP_FIBER_STACK_CACHE_MAX needs spinel with the guard.)
 SP_FIBER_STACK_CACHE=2
-SP_FIBER_STACK_CACHE_MAX=2

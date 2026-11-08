@@ -200,10 +200,28 @@ stream shared by every task, and newlib prints unbuffered output through a
 on its first log line after the IP was assigned: a stack-protection panic on
 every boot. `shim/esp32/include/stdio.h` now keeps stdout line-buffered.
 
+### Pin moved to spinel master (2026-11-08, branch pin/spinel-master)
+
+`vendor/spinel` now points at upstream `4cb57256`. On the T-OI Plus with the
+default preset: hello, blink, battery, i2c and wifi_status run; wifi_status
+passes the RST storm and three consecutive OTA round trips (ota_0 -> ota_1
+-> ota_0 -> ota_1, ~28 s each, all marked valid), idling at 90.6 KB free.
+The old default sizes were not enough on master: OTA died with
+`NoMemoryError` (upstream added 16 KB read buffers per socket and 256-worker
+scheduler tables), so the diet values became `presets/default.defs`.
+`wifi_status.rb` also gained a GC checkpoint every 8 OTA chunks.
+
+The ESP32 (Xtensa) apps build and link (after anchoring `__wrap_longjmp`,
+see `firmware/main/CMakeLists.txt`) but were not run: no T-Display was
+attached.
+
 ### Still open
 
-- **The vendored pin** still points at `6604788e`. Moving it to master needs
-  every app re-run on both boards (the T-Display/Xtensa build was not tried
-  against master).
+- **T-Display on hardware**: flash blink_tdisplay, buttons_tdisplay,
+  display_tdisplay and wifi_status on the classic ESP32.
+- **Prebuilt runtime release** for the new pin (`tools/release-assets.sh
+  publish`): `make setup` downloads assets for the pinned commit.
 - **`/led/toggle` does not toggle**: the toggle code was dropped from
   `wifi_status.rb` in the M6 OTA commit (`bfb4a05`); unrelated to this work.
+- **Upstream follow-ups**: an override for `SP_IO_RBUF_MIN` (16 KB per
+  buffered stream) and a lazy `sp_hdr_char_cache` (16 KB static).
