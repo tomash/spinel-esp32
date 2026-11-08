@@ -1,5 +1,6 @@
 # build artifacts
 build/
+firmware/build-size-*/
 dist/
 *.o
 *.a
