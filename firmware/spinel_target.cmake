@@ -20,10 +20,49 @@ else()
     set(SPINEL_IDF_TARGET "esp32c3")
 endif()
 
+# Variant overrides, read from the environment at configure time (so give
+# each variant its own build dir, as tools/size-report.sh does):
+#   SPINEL_SRC        spinel tree whose lib/ headers the app TU compiles
+#                     against; must be the tree the RT archive was built from
+#   SPINEL_RT_SUFFIX  archive dir build/rt-<arch><suffix> (tools/build-rt.sh
+#                     RT_SUFFIX)
+#   SPINEL_APP_DEFS   extra compile definitions for the app TU, space
+#                     separated, without -D; must match tools/build-rt.sh
+#                     RT_DEFS (e.g. "SP_NO_ALLOC_REPORT")
+if(DEFINED ENV{SPINEL_SRC} AND NOT "$ENV{SPINEL_SRC}" STREQUAL "")
+    set(SPINEL_SRC_DIR "$ENV{SPINEL_SRC}")
+else()
+    set(SPINEL_SRC_DIR "${CMAKE_CURRENT_LIST_DIR}/../vendor/spinel")
+endif()
+separate_arguments(SPINEL_APP_DEFS UNIX_COMMAND "$ENV{SPINEL_APP_DEFS}")
+
+# Capacity preset (presets/<name>.defs, shared with tools/build-rt.sh):
+#   SPINEL_PRESET     default | small | ...; a non-default preset links the
+#                     archive tools/build-rt.sh builds for it,
+#                     build/rt-<arch>-<preset>, unless SPINEL_RT_SUFFIX is set
+if(DEFINED ENV{SPINEL_PRESET} AND NOT "$ENV{SPINEL_PRESET}" STREQUAL "")
+    set(SPINEL_PRESET "$ENV{SPINEL_PRESET}")
+else()
+    set(SPINEL_PRESET "default")
+endif()
+set(_spinel_preset_file "${CMAKE_CURRENT_LIST_DIR}/../presets/${SPINEL_PRESET}.defs")
+if(NOT EXISTS "${_spinel_preset_file}")
+    message(FATAL_ERROR "spinel: no preset ${_spinel_preset_file}")
+endif()
+file(STRINGS "${_spinel_preset_file}" SPINEL_PRESET_DEFS REGEX "^[ \t]*[A-Za-z_]")
+list(TRANSFORM SPINEL_PRESET_DEFS STRIP)
+if(DEFINED ENV{SPINEL_RT_SUFFIX})
+    set(SPINEL_RT_SUFFIX "$ENV{SPINEL_RT_SUFFIX}")
+elseif(NOT SPINEL_PRESET STREQUAL "default")
+    set(SPINEL_RT_SUFFIX "-${SPINEL_PRESET}")
+else()
+    set(SPINEL_RT_SUFFIX "")
+endif()
+
 if(SPINEL_IDF_TARGET STREQUAL "esp32c3")
-    set(SPINEL_RT_DIR "${CMAKE_CURRENT_LIST_DIR}/../build/rt-riscv32")
+    set(SPINEL_RT_DIR "${CMAKE_CURRENT_LIST_DIR}/../build/rt-riscv32${SPINEL_RT_SUFFIX}")
 elseif(SPINEL_IDF_TARGET STREQUAL "esp32")
-    set(SPINEL_RT_DIR "${CMAKE_CURRENT_LIST_DIR}/../build/rt-esp32")
+    set(SPINEL_RT_DIR "${CMAKE_CURRENT_LIST_DIR}/../build/rt-esp32${SPINEL_RT_SUFFIX}")
 else()
     message(FATAL_ERROR
         "spinel: no prebuilt RT archive mapping for IDF_TARGET=${SPINEL_IDF_TARGET} "
@@ -36,4 +75,4 @@ if(NOT EXISTS "${SPINEL_RT_ARCHIVE}")
         "spinel: ${SPINEL_RT_ARCHIVE} not found -- run "
         "'tools/build-rt.sh ${SPINEL_IDF_TARGET}' first (esp32c3 takes no arg)")
 endif()
-message(STATUS "spinel: IDF_TARGET=${SPINEL_IDF_TARGET} RT archive: ${SPINEL_RT_ARCHIVE}")
+message(STATUS "spinel: IDF_TARGET=${SPINEL_IDF_TARGET} RT archive: ${SPINEL_RT_ARCHIVE} src: ${SPINEL_SRC_DIR} preset: ${SPINEL_PRESET} defs: ${SPINEL_APP_DEFS}")

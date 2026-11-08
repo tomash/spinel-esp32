@@ -11,10 +11,19 @@
 # Usage:
 #   tools/size-report.sh [--target=esp32c3|esp32] app/size/empty.rb app/blink.rb ...
 #
-# Writes build/size/<app>.txt per app and prints a summary table.
+# Writes build/size/<app>-<target>[-<variant>].txt per app.
+#
+# Variants (environment; see firmware/spinel_target.cmake):
+#   VARIANT=small          label for build dir and report names
+#   SPINEL_SRC=...         spinel tree: its spinel binary emits the C, its
+#                          lib/ headers compile it (default vendor/spinel)
+#   SPINEL_FLAGS="--no-bigint"   extra spinel flags
+#   SPINEL_RT_SUFFIX=-small      runtime archive build/rt-<arch><suffix>
+#   SPINEL_APP_DEFS="SP_NO_ALLOC_REPORT"   extra app TU defines
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-SPINEL="$ROOT/vendor/spinel/spinel"
+SPINEL="${SPINEL_SRC:-$ROOT/vendor/spinel}/spinel"
+VSUF="${VARIANT:+-$VARIANT}"
 IDF_EXPORT="$HOME/esp/esp-idf-v5.5/export.sh"
 TARGET="esp32c3"
 apps=()
@@ -33,6 +42,15 @@ case "$TARGET" in
 esac
 
 mkdir -p "$ROOT/build/size"
+# The WiFi apps #error without firmware/main/wifi_secrets.h (gitignored);
+# write it from the environment or .env as tools/build-app.sh does, and leave
+# an existing one alone. Credentials do not change the footprint.
+if [[ ! -f "$ROOT/firmware/main/wifi_secrets.h" ]]; then
+  if [[ -z "${WIFI_SSID:-}" && -f "$ROOT/.env" ]]; then set -a; source "$ROOT/.env"; set +a; fi
+  c_str() { local v="${1//\\/\\\\}"; printf '"%s"' "${v//\"/\\\"}"; }
+  printf '#define WIFI_SSID     %s\n#define WIFI_PASSWORD %s\n' \
+    "$(c_str "${WIFI_SSID:-size-report}")" "$(c_str "${WIFI_PASSWORD:-}")" > "$ROOT/firmware/main/wifi_secrets.h"
+fi
 APP_C="$ROOT/firmware/main/app.c"
 had_app_c=0
 if [[ -f "$APP_C" ]]; then cp "$APP_C" "$ROOT/build/size/.app.c.keep"; had_app_c=1; fi
@@ -43,16 +61,19 @@ trap restore EXIT
 
 for rb in "${apps[@]}"; do
   base="$(basename "$rb" .rb)"
-  bdir="build-size-$base-$TARGET"
-  echo "==> $rb ($TARGET)"
-  "$SPINEL" "$ROOT/$rb" -S --cc="$XGCC" > "$APP_C"
+  bdir="build-size-$base-$TARGET$VSUF"
+  rep="$base-$TARGET$VSUF"
+  echo "==> $rb ($TARGET${VARIANT:+, variant $VARIANT})"
+  # shellcheck disable=SC2086
+  "$SPINEL" "$ROOT/$rb" -S --cc="$XGCC" ${SPINEL_FLAGS:-} > "$APP_C" \
+    || { echo "!! spinel refused $rb" >&2; continue; }
   # shellcheck disable=SC1090
   ( cd "$ROOT/firmware" && source "$IDF_EXPORT" >/dev/null 2>&1 \
       && IDF_TARGET="$TARGET" idf.py -B "$bdir" -D SDKCONFIG="$bdir/sdkconfig" \
-           -D IDF_TARGET="$TARGET" build >"$ROOT/build/size/$base-$TARGET.build.log" 2>&1 ) \
-    || { echo "!! build failed, see build/size/$base-$TARGET.build.log" >&2; continue; }
+           -D IDF_TARGET="$TARGET" build >"$ROOT/build/size/$rep.build.log" 2>&1 ) \
+    || { echo "!! build failed, see build/size/$rep.build.log" >&2; continue; }
   python3 - "$ROOT/firmware/$bdir/spinel_esp32_app.map" "$ROOT/firmware/$bdir/spinel_esp32_app.bin" \
-      > "$ROOT/build/size/$base-$TARGET.txt" <<'PY'
+      > "$ROOT/build/size/$rep.txt" <<'PY'
 import os, re, sys, collections
 mapf, binf = sys.argv[1], sys.argv[2]
 lines = open(mapf, errors="replace").read().splitlines()
@@ -98,6 +119,6 @@ print("\ntop spinel runtime .bss:")
 for k, v in bss_objs.most_common(12):
     print(f"  {v:7d}  {k}")
 PY
-  cat "$ROOT/build/size/$base-$TARGET.txt"
+  cat "$ROOT/build/size/$rep.txt"
   echo
 done

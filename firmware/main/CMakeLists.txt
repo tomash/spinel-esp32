@@ -9,7 +9,7 @@
 
 idf_component_register(
     SRCS "sp_app_adapter.c" "sp_lwip_compat.c" "sp_ota_adapter.c" "tdisplay.c" "app.c"
-    INCLUDE_DIRS "." "../../shim/esp32/include" "../../vendor/spinel/lib" "../../vendor/spinel/lib/regexp"
+    INCLUDE_DIRS "." "../../shim/esp32/include" "${SPINEL_SRC_DIR}/lib" "${SPINEL_SRC_DIR}/lib/regexp"
     # M4: esp_wifi STA + nvs + netif + event loop + adc driver. The
     # prebuilt RT archive cannot carry these; the app TU (FFI adapters)
     # and the IDF link line resolve them here. (sp_lwip_compat.c is
@@ -62,20 +62,14 @@ endforeach()
 # keeping IDF's strictness for IDF's own components.
 target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-unused-function -w)
 
-# Static-BSS capacity macros -- MUST match tools/build-rt.sh $SP_SZ exactly:
-# both sides declare sp_gc_roots[SP_GC_STACK_MAX] (sp_gc.h:81) and the app
-# TU's inline SP_GC_ROOT push/pop consults the same bound. A mismatch
-# corrupts the root stack. (0040 patch guards the rest.)
+# Static-BSS capacity macros come from presets/<SPINEL_PRESET>.defs
+# (spinel_target.cmake reads them into SPINEL_PRESET_DEFS), the same file
+# tools/build-rt.sh builds the archive with: both sides declare arrays such as
+# sp_gc_roots[SP_GC_STACK_MAX] (sp_gc.h) and the app TU's inline SP_GC_ROOT
+# push/pop consults the same bound, so a mismatch corrupts the root stack.
 target_compile_definitions(${COMPONENT_LIB} PRIVATE
-    SP_GC_STACK_MAX=4096
-    SP_GC_REMEMBERED_MAX=1024
-    SP_GC_PINNED_MAX=1024
-    SP_ALLOC_STATS=512
-    SP_STR_SHAPE_MAX=512
-    SP_DYN_SYMS_MAX=256
-    SP_GC_MARK_STACK_MAX=256
-    SP_EXC_STACK_MAX=8
-    SP_CATCH_STACK_MAX=8
+    ${SPINEL_PRESET_DEFS}
     SP_NO_SIGNALS
     __ESP32_SHIM__
-    SP_INT_OVERFLOW_MODE_RAISE)
+    SP_INT_OVERFLOW_MODE_RAISE
+    ${SPINEL_APP_DEFS})

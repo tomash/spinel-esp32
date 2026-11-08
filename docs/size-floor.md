@@ -90,3 +90,89 @@ Upstream asks this suggests, cheapest first:
 - (a) `SP_ALLOC_REPORT` compile-time off, so `sp_tu_init` emits no tags;
 - (b) a `--int-overflow=wrap|raise` mode that never promotes to Bignum;
 - (c) a documented small-target capacity preset.
+
+## Follow-up: the switches and the `small` preset (2026-11-08)
+
+Spinel moved fast: the measurements above are at the old pin (`6604788e`);
+everything below is spinel master `206e90c4` plus the `size-floor-switches`
+branch (tomash/spinel), which adds:
+
+- `SP_NO_ALLOC_REPORT`: compiles the allocation report out of the runtime
+  and fences the generated `sp_tu_init` tags (the constructor that read
+  `SPINEL_ALLOC_REPORT` was linked into every program);
+- `--no-bigint`: loop accumulators stay Integer and raise on overflow; a
+  value that could only be a Bignum (`0xdeadbeef` on 32-bit, `2**40`) is a
+  compile error at its line;
+- `SP_FIBER_STACK_CACHE_MAX`: the fiber stack cache's static table was sized
+  for 1024 slots regardless of the 32 it uses.
+
+On this repo's side: `presets/*.defs` is now the single list of capacity
+macros, read by both `tools/build-rt.sh` and the firmware CMake (they used to
+be duplicated by hand); `presets/small.defs` is the diet. Variant knobs:
+`SPINEL_SRC`, `SPINEL_PRESET`, `SPINEL_FLAGS` (see `tools/size-report.sh`).
+
+```
+export SPINEL_SRC=~/spinel-size-floor
+SPINEL_PRESET=small tools/build-rt.sh
+VARIANT=small SPINEL_PRESET=small SPINEL_FLAGS=--no-bigint \
+  tools/size-report.sh app/blink.rb app/wifi_status.rb
+```
+
+### Spinel runtime on ESP32-C3: flash / static RAM (.data+.bss), bytes
+
+| app | master, default preset | + switches | `small` preset + `--no-bigint` |
+|---|---:|---:|---:|
+| `size/empty.rb` | 61 500 / 51 763 | 59 698 / 35 355 | 59 740 / **11 083** |
+| `size/int_only.rb` | 65 912 / 51 763 | 60 086 / 35 355 | 60 128 / **11 083** |
+| `blink.rb` | 68 729 / 51 763 | 65 813 / 35 355 | 65 861 / **11 083** |
+| `hello.rb` | 172 613 / 52 115 | 169 517 / 35 707 | 169 725 / **11 435** |
+| `wifi_status.rb` | 344 515 / 98 463 | 341 251 / 82 055 | 341 693 / **32 007** |
+
+"+ switches" = default preset with `SP_NO_ALLOC_REPORT` and `--no-bigint`.
+The generated app TU's static RAM drops from 2 644 to 1 876 bytes under
+`small` (catch stack 8 → 4).
+
+Reading it:
+
+- **Upstream already halved the flash floor.** At the old pin an integer
+  loop pulled 162 KB of runtime; on master it is 66 KB even with the default
+  build, because codegen stopped referencing whole families of runtime code
+  it does not use. The flash numbers are now dominated by what the program
+  actually does (hello's string formatting: +100 KB; networking: +270 KB).
+- **`--no-bigint` is worth ~6 KB flash** on master (int_only 65.9 → 60.1 KB):
+  much less than at the old pin, but it also turns a silent Bignum into a
+  loud `RangeError` or a compile error, which is the behaviour an MCU wants.
+- **Static RAM: 51.8 → 11.1 KB for ordinary apps, 98.5 → 32.0 KB for the
+  WiFi server.** The reporter (16.4 KB), the GC roots fast region (14 KB),
+  the remembered/pinned sets (7.7 KB), the scheduler's per-worker tables
+  (`g_lrq`, 16 KB in wifi_status) and the fiber stack cache (8 KB).
+
+What is left in wifi_status's 32 KB: `sp_hdr_char_cache` 16 KB (a fixed
+`[2][256]` table of one-character Strings, built on first use; a lazy or
+smaller variant is the next upstream candidate), exception and catch
+stacks 3.6 KB, slab worker 2.4 KB, GC roots 2 KB, string-length cache
+1.5 KB, regexp and backtrace buffers 1 KB each.
+
+### Is the diet safe? (host evidence)
+
+`tools/preset-stress.sh small` rebuilds the runtime with the preset on the
+host and runs spinel's GC torture corpus against it: every
+`# spinel: gc-stress` test under `SPINEL_GC_STRESS=2` (a collection at every
+allocation) with and without `SPINEL_GC_VERIFY`, and every
+`# spinel: gc-minor` test with the generational mark on, where 32-entry
+remembered/pinned sets overflow constantly. Result of a clean full run:
+**691 pass, 0 fail, 61 skipped** (752 runs). The skipped ones are 34
+programs that need the threaded runtime (`-DSP_THREADS`, which no MCU build
+links); the harness recognises them from the driver's build plan.
+
+### Not done yet
+
+- **On silicon.** No board was attached while this was measured. Exit
+  criterion for roadmap milestone 2: `blink.rb` and `wifi_status.rb` built
+  with `SPINEL_PRESET=small SPINEL_FLAGS=--no-bigint` against the
+  `size-floor-switches` tree, flashed to the T-OI Plus, wifi_status survives
+  the RST storm and an OTA cycle, heap watermark logged.
+- **The vendored pin** still points at `6604788e`. Moving it to master needs
+  the new shim header (`shim/esp32/include/sys/termios.h`) and the
+  `SP_ONE_STRING` handling in `tools/build-rt.sh`, both done here, plus a
+  hardware run of every app.

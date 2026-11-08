@@ -1,0 +1,20 @@
+# presets/default.defs -- runtime capacity macros for the ESP32 targets.
+#
+# One NAME=VALUE (or bare NAME) per line; '#' starts a comment. Read by
+# tools/build-rt.sh (each line becomes -D<line> for every runtime member) and
+# by firmware/spinel_target.cmake (compile definitions for the app TU), so the
+# runtime archive and the generated C cannot disagree: several of these size
+# arrays both sides index (sp_gc_roots, the exception stacks).
+#
+# This is the configuration every app in app/ was verified with on the
+# T-OI Plus (ESP32-C3) and the T-Display (ESP32). Measured static RAM of the
+# runtime with it: ~48 KB (docs/size-floor.md).
+SP_GC_STACK_MAX=4096
+SP_GC_REMEMBERED_MAX=1024
+SP_GC_PINNED_MAX=1024
+SP_ALLOC_STATS=512
+SP_STR_SHAPE_MAX=512
+SP_DYN_SYMS_MAX=256
+SP_GC_MARK_STACK_MAX=256
+SP_EXC_STACK_MAX=8
+SP_CATCH_STACK_MAX=8
