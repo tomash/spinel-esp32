@@ -120,7 +120,7 @@ rather than writing N vendor ports.
 | # | Milestone | Hardware | Exit criterion |
 |---|---|---|---|
 | 1 | ✅ Measure footprint floor | none (ESP32-C3 build) | `docs/size-floor.md` |
-| 2 | 🔶 Static-RAM diet preset: `presets/small.defs` + spinel `size-floor-switches`; 11 KB (blink) / 32 KB (wifi_status) measured, GC torture-tested on host; silicon run pending | T-OI Plus (C3) | blink + wifi_status run on silicon with ≤12 KB runtime static RAM (blink) |
+| 2 | ✅ Static-RAM diet preset: `presets/small.defs` + spinel `size-floor-switches`; runtime static RAM 11 KB (blink) / 32 KB (wifi_status); +67 KB free heap on the T-OI Plus; RST storm + OTA pass | T-OI Plus (C3) | blink + wifi_status run on silicon with ≤12 KB runtime static RAM (blink) |
 | 3 | Pico 2 W, RISC-V mode | Pico 2 W, Debug Probe | blink + hello over UART |
 | 4 | Pico 2 W networking | Pico 2 W | wifi_status serving HTTP over CYW43/lwIP |
 | 5 | Cortex-M context switch | Pico 2 W (M33 mode), Nucleo-F411RE | Fiber test passes on M33 and M4F |

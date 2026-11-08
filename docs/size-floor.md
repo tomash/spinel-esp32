@@ -165,14 +165,45 @@ remembered/pinned sets overflow constantly. Result of a clean full run:
 programs that need the threaded runtime (`-DSP_THREADS`, which no MCU build
 links); the harness recognises them from the driver's build plan.
 
-### Not done yet
+### On silicon: T-OI Plus (ESP32-C3), 2026-11-08
 
-- **On silicon.** No board was attached while this was measured. Exit
-  criterion for roadmap milestone 2: `blink.rb` and `wifi_status.rb` built
-  with `SPINEL_PRESET=small SPINEL_FLAGS=--no-bigint` against the
-  `size-floor-switches` tree, flashed to the T-OI Plus, wifi_status survives
-  the RST storm and an OTA cycle, heap watermark logged.
+Both apps built with `SPINEL_PRESET=small SPINEL_FLAGS=--no-bigint` against
+the `size-floor-switches` tree, flashed over `/dev/ttyUSB0`:
+
+- **blink.rb**: 10 blinks in the expected 4 s, `main()` returned 0.
+- **wifi_status.rb**: associates, gets its IP, serves `/`, `/led/toggle`,
+  `/ota/status`; mDNS (`spinel-esp32.local`) resolves.
+  - **RST storm**: two rounds of 300 connections closed with `SO_LINGER=0`
+    (half before sending a request): 103 `accept error: ECONNABORTED` lines
+    logged and rescued, zero panics, 40/40 normal GETs OK afterwards. Heap
+    dipped to 32.3 KB free and recovered.
+  - **OTA**: forced round trip from a LAN `python3 -m http.server`:
+    1 454 272 B streamed into `ota_1` in 27 s (minimum free heap 45 KB),
+    sealed, rebooted into `ota_1`, proof-of-life GET, `marked valid
+    (rollback cancelled)`. One earlier attempt dropped its connection
+    partway, with no serial capture running; it could not be reproduced.
+
+**Free heap at idle, same app, same spinel tree, same board:**
+
+| preset | free heap | largest block |
+|---|---:|---:|
+| default | 35 580 B | 24 576 B |
+| `small` + `--no-bigint` | 102 888 B | 90 112 B |
+
+The +67 KB is the static RAM the preset removed (98.5 -> 32.0 KB), now
+available to the IDF heap.
+
+**Porting bug found on the way (not the preset):** spinel master
+(820b9a6a6) makes stdout unbuffered when it is a tty. ESP-IDF's stdout is one
+stream shared by every task, and newlib prints unbuffered output through a
+1 KB stack buffer (`__sbprintf`), so the 2304-byte `sys_evt` task overflowed
+on its first log line after the IP was assigned: a stack-protection panic on
+every boot. `shim/esp32/include/stdio.h` now keeps stdout line-buffered.
+
+### Still open
+
 - **The vendored pin** still points at `6604788e`. Moving it to master needs
-  the new shim header (`shim/esp32/include/sys/termios.h`) and the
-  `SP_ONE_STRING` handling in `tools/build-rt.sh`, both done here, plus a
-  hardware run of every app.
+  every app re-run on both boards (the T-Display/Xtensa build was not tried
+  against master).
+- **`/led/toggle` does not toggle**: the toggle code was dropped from
+  `wifi_status.rb` in the M6 OTA commit (`bfb4a05`); unrelated to this work.
