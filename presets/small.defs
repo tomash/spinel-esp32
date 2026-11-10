@@ -1,14 +1,14 @@
-# presets/small.defs -- presets/default.defs plus the knobs that need
-# spinel's size-floor switches (tomash/spinel size-floor-switches, proposed
-# upstream). Format and consumers: see presets/default.defs.
+# presets/small.defs -- presets/default.defs plus the knobs from spinel's
+# small-target switches (matz/spinel#11513, upstream since cd8f80f15, so in
+# the vendored pin). Format and consumers: see presets/default.defs.
 #
-# Build against that tree: SPINEL_SRC=<it> SPINEL_PRESET=small, and add
-# SPINEL_FLAGS=--no-bigint for the matching compiler switch. On a spinel
-# without the switches the two extra defines are ignored, so the preset still
-# builds and behaves as default.
+# Opt-in, for really constrained parts: SPINEL_PRESET=small, and add
+# SPINEL_FLAGS=--no-bigint for the matching compiler switch (Integer
+# overflow then raises instead of growing a Bignum, and a value that can
+# only be a Bignum is a compile error).
 #
-# Measured on the T-OI Plus, wifi_status idle free heap: default preset on
-# upstream 90.6 KB; this preset on the switches tree 102.9 KB.
+# Measured on the T-OI Plus, wifi_status idle free heap: default preset
+# 90.6 KB; this preset with --no-bigint 102.9 KB.
 
 # Allocation report compiled out entirely: drops the stats and type-name
 # tables (4 KB, not sized by any knob) and the reporter's constructor and code.

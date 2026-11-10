@@ -215,6 +215,16 @@ The ESP32 (Xtensa) apps build and link (after anchoring `__wrap_longjmp`,
 see `firmware/main/CMakeLists.txt`) but were not run: no T-Display was
 attached.
 
+### Pin at ca4b6ec8f (2026-11-10): the switches are upstream
+
+matz/spinel#11513 merged the three switches (`SP_NO_ALLOC_REPORT`,
+`--no-bigint`, `SP_FIBER_STACK_CACHE_MAX`), so `presets/small.defs` no longer
+needs a fork: the pin moved to `ca4b6ec8f`, where the small runtime archive
+has no reporter symbols and the vendored compiler takes `--no-bigint`. All
+apps build for both targets (C3: blink, wifi_status with default and small;
+ESP32: the three T-Display demos and wifi_status). Re-run on hardware still
+pending (no board attached at the time). `small` stays opt-in.
+
 ### Still open
 
 - **T-Display on hardware**: flash blink_tdisplay, buttons_tdisplay,

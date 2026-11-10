@@ -82,7 +82,7 @@ Verify:
 
 ```bash
 vendor/spinel/bin/spinel --version
-# spinel 2026.09.12+16444 (4cb572560) [...]
+# spinel 2026.09.12+16953 (ca4b6ec8f) [...]
 ```
 
 ### 3. Install ESP-IDF (the cross toolchain)
@@ -299,8 +299,9 @@ the pin forward, check out a newer upstream commit in `vendor/spinel`, bump
 `SPINEL_PIN`, and (for Releases) republish the runtime assets under the new
 tag with `tools/release-assets.sh publish`.
 
-Moving the pin from `6604788e` to `4cb57256` (~7,400 upstream commits) took
-four changes on this side, all needed for the apps to run again:
+Moving the pin from `6604788e` to current master (~7,900 upstream commits,
+now `ca4b6ec8f`) took four changes on this side, all needed for the apps to
+run again:
 
 - `tools/build-rt.sh` follows the tree's own `RT_MEMBERS` and the defines its
   Makefile forces on the runtime (`-DSP_ONE_STRING`: one String
@@ -318,14 +319,14 @@ four changes on this side, all needed for the apps to run again:
 
 `presets/<name>.defs` lists the runtime's capacity macros once, for both the
 runtime archive (`tools/build-rt.sh`) and the app's compile (the firmware
-CMake), so the two cannot disagree. `default` is what every build uses.
-`small` adds the knobs from spinel's
-[size-floor switches](https://github.com/tomash/spinel/tree/size-floor-switches)
-(proposed upstream: the allocation report compiled out, `--no-bigint`, a
-sized fiber stack cache); with them `wifi_status` idles at ~103 KB free:
+CMake), so the two cannot disagree. `default` is what every build uses, and
+fits every app here, `wifi_status` with OTA included (~90 KB free heap on the
+C3). `small` is opt-in for really constrained parts: it adds spinel's
+small-target switches ([matz/spinel#11513](https://github.com/matz/spinel/pull/11513):
+the allocation report compiled out, a sized fiber stack cache) and pairs with
+`--no-bigint`; with them `wifi_status` idles at ~103 KB free:
 
 ```bash
-export SPINEL_SRC=/path/to/spinel-with-the-switches
 SPINEL_PRESET=small tools/build-rt.sh
 (cd firmware && idf.py fullclean)   # the preset is read when CMake configures
 SPINEL_PRESET=small SPINEL_FLAGS=--no-bigint make flash APP=app/wifi_status.rb
