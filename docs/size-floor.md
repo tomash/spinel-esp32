@@ -222,8 +222,11 @@ matz/spinel#11513 merged the three switches (`SP_NO_ALLOC_REPORT`,
 needs a fork: the pin moved to `ca4b6ec8f`, where the small runtime archive
 has no reporter symbols and the vendored compiler takes `--no-bigint`. All
 apps build for both targets (C3: blink, wifi_status with default and small;
-ESP32: the three T-Display demos and wifi_status). Re-run on hardware still
-pending (no board attached at the time). `small` stays opt-in.
+ESP32: the three T-Display demos and wifi_status). On the T-OI Plus with the
+default preset (2026-11-11): wifi_status idles at 90.3 KB free, survives the
+300-connection RST storm (20/20 GETs after) and an OTA round trip into ota_1,
+marked valid. Not re-run at this pin: the small preset on hardware, and any
+ESP32/Xtensa board. `small` stays opt-in.
 
 ### Still open
 
