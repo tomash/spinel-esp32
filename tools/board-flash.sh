@@ -24,13 +24,15 @@ fi
 # ESP32-S3 over its own USB-Serial/JTAG (M5StickS3): the RTS reset that ends
 # a flash, and tools/monitor.py's DTR/RTS reset, can land the chip back in
 # download mode (the PMIC keeps the BOOT strap low after a power-button
-# download entry). esptool's RTC-watchdog reset leaves download mode and
+# download entry). So: let esptool enter download mode itself (works whether
+# the app or the ROM is running), leave it with the RTC-watchdog reset, which
 # boots the app; then read the console without touching DTR/RTS.
 SPINEL_BOARD="$board" SPINEL_ESP_PORT="$port" \
   env ${baud:+ESPBAUD=$baud} "$ROOT/tools/build-app.sh" "$app" --target="$target" --flash
 base="$(basename "$app" .rb)"
 ( source "$HOME/esp/esp-idf-v5.5/export.sh" >/dev/null 2>&1 \
-  && python -m esptool --port "$port" --before no_reset --after watchdog_reset chip_id >/dev/null )
+  && python -m esptool --port "$port" --before default_reset --after watchdog_reset chip_id >/dev/null ) \
+  || echo "!! watchdog reset failed; the app may still be running from the flash reset"
 for _ in $(seq 1 20); do [[ -e "$port" ]] && break; sleep 0.5; done
 echo "==> serial capture ${cap}s (no reset, $port) -> build/$base.log"
 python3 - "$port" "$cap" > "$ROOT/build/$base.log" <<'PY'
