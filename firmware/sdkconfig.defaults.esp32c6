@@ -1,0 +1,18 @@
+# sdkconfig.defaults.esp32c6 -- added on top of sdkconfig.defaults for
+# IDF_TARGET=esp32c6 (idf.py reads sdkconfig.defaults.<target> itself).
+#
+# OpenThread on the C6's native IEEE 802.15.4 radio, for app/thread_status.rb
+# (the settings examples/openthread/ot_cli uses, minus its console/CLI). The
+# stack is only linked into apps that call it; WiFi apps are unchanged apart
+# from the IPv6 address count.
+CONFIG_OPENTHREAD_ENABLED=y
+CONFIG_OPENTHREAD_BORDER_ROUTER=n
+CONFIG_OPENTHREAD_CLI=n
+CONFIG_OPENTHREAD_TASK_SIZE=10240
+CONFIG_MBEDTLS_CMAC_C=y
+CONFIG_MBEDTLS_SSL_PROTO_DTLS=y
+CONFIG_MBEDTLS_KEY_EXCHANGE_ECJPAKE=y
+CONFIG_MBEDTLS_ECJPAKE_C=y
+CONFIG_LWIP_IPV6_NUM_ADDRESSES=8
+CONFIG_LWIP_MULTICAST_PING=y
+CONFIG_LWIP_HOOK_IP6_SELECT_SRC_ADDR_CUSTOM=y
