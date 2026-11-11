@@ -36,12 +36,17 @@ done
 TARGET="${TARGET:-riscv32}"
 case "$TARGET" in
   riscv32) GCC_NAME="riscv32-esp-elf-gcc" ;;
+  # ESP32-C6 (and H2): RV32IMAC -- the C3's rv32imc plus atomics. Same
+  # compiler, its own archive so the objects carry the C6's arch attributes.
+  riscv32imac) GCC_NAME="riscv32-esp-elf-gcc" ;;
   # Chip-specific driver, NOT the generic xtensa-esp-elf-gcc: the generic
   # driver's default multilib is big-endian and the linker then rejects the
   # archive ("compiled for a big endian system"). The esp32 driver defaults
   # to the little-endian windowed ESP32 config.
   esp32)   GCC_NAME="xtensa-esp32-elf-gcc" ;;
-  *) echo "error: unknown target '$TARGET' (riscv32|esp32)" >&2; exit 1 ;;
+  # ESP32-S3: Xtensa LX7, its own chip-specific driver (same reason as esp32).
+  esp32s3) GCC_NAME="xtensa-esp32s3-elf-gcc" ;;
+  *) echo "error: unknown target '$TARGET' (riscv32|riscv32imac|esp32|esp32s3)" >&2; exit 1 ;;
 esac
 AR_NAME="${GCC_NAME%gcc}ar"   # riscv32-esp-elf-ar / xtensa-esp-elf-ar
 
@@ -150,7 +155,9 @@ fi
 ARCH_FLAGS=""
 if [[ "$TARGET" == "riscv32" ]]; then
   ARCH_FLAGS="-march=rv32imc_zicsr_zifencei -mabi=ilp32"
-elif [[ "$TARGET" == "esp32" ]]; then
+elif [[ "$TARGET" == "riscv32imac" ]]; then
+  ARCH_FLAGS="-march=rv32imac_zicsr_zifencei -mabi=ilp32"
+elif [[ "$TARGET" == "esp32" || "$TARGET" == "esp32s3" ]]; then
   ARCH_FLAGS="-mlongcalls"
 fi
 
@@ -205,7 +212,7 @@ compile "$SHIM/src/sp_esp32_stub.c" "$OUT/sp_esp32_stub.o"
 # the ucontext symbols are not pulled from this archive. Skip it and warn; the
 # archive stays linkable for apps without Fiber.
 UCFILE="$SHIM/src/ucontext.S"
-[[ "$TARGET" == "esp32" ]] && UCFILE="$SHIM/src/ucontext_xtensa.S"
+[[ "$TARGET" == "esp32" || "$TARGET" == "esp32s3" ]] && UCFILE="$SHIM/src/ucontext_xtensa.S"
 if [[ -f "$UCFILE" ]]; then
   "$CC" $CFLAGS_RT -x assembler-with-cpp -c "$UCFILE" -o "$OUT/ucontext.o"
 else

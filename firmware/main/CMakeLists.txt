@@ -9,7 +9,8 @@
 
 idf_component_register(
     SRCS "sp_app_adapter.c" "sp_lwip_compat.c" "sp_ota_adapter.c" "tdisplay.c" "app.c"
-    INCLUDE_DIRS "." "../../shim/esp32/include" "${SPINEL_SRC_DIR}/lib" "${SPINEL_SRC_DIR}/lib/regexp"
+         "boards/board_common.c" "boards/${SPINEL_BOARD}.c"
+    INCLUDE_DIRS "." "boards" "../../shim/esp32/include" "${SPINEL_SRC_DIR}/lib" "${SPINEL_SRC_DIR}/lib/regexp"
     # M4: esp_wifi STA + nvs + netif + event loop + adc driver. The
     # prebuilt RT archive cannot carry these; the app TU (FFI adapters)
     # and the IDF link line resolve them here. (sp_lwip_compat.c is
@@ -18,7 +19,7 @@ idf_component_register(
     # M5a: mdns is the managed component espressif/mdns (idf_component.yml)
     # -- not in the IDF v5.5 component tree; the component manager fetches
     # it at configure time into build/managed_components.
-    REQUIRES esp_wifi nvs_flash esp_netif esp_event esp_adc esp_driver_gpio esp_lcd lwip mdns app_update
+    REQUIRES esp_wifi nvs_flash esp_netif esp_event esp_adc esp_driver_gpio esp_driver_i2c esp_lcd lwip mdns app_update led_strip
 )
 
 # Link the prebuilt spinel RT after this component's objects. Imported
@@ -55,13 +56,13 @@ foreach(_sym
     lwip_freeaddrinfo)
     target_link_options(${COMPONENT_LIB} PUBLIC "-Wl,-u,${_sym}")
 endforeach()
-# 3. Xtensa only: IDF links with --wrap=longjmp, so the RT's longjmp calls
+# 3. Xtensa only (esp32, esp32s3): IDF links with --wrap=longjmp, so the RT's longjmp calls
 #    (exceptions: sp_raise_cls, sp_raise_stack_overflow) become
 #    __wrap_longjmp, which lives in libesp_rom.a (patches/esp_rom_longjmp.S),
 #    also early on the line. wifi_status happened to pull it in through
 #    another path; the T-Display demos did not, and failed to link on spinel
 #    master ("undefined reference to __wrap_longjmp").
-if(SPINEL_IDF_TARGET STREQUAL "esp32")
+if(SPINEL_IDF_TARGET STREQUAL "esp32" OR SPINEL_IDF_TARGET STREQUAL "esp32s3")
     target_link_options(${COMPONENT_LIB} PUBLIC "-Wl,-u,__wrap_longjmp")
 endif()
 # spinel's header-heavy style trips unused-function warnings; IDF compiles

@@ -39,8 +39,8 @@ TARGET="esp32c3"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --emit-only)   mode="--emit-only" ;;
-    --target=esp32) mode="--target=esp32"; TARGET="esp32" ;;
-    --target=esp32c3) mode="--target=esp32"; TARGET="esp32c3" ;;
+    --target=esp32|--target=esp32c3|--target=esp32c6|--target=esp32s3)
+                   mode="--target=esp32"; TARGET="${1#--target=}" ;;
     --flash)       want_flash=1 ;;
     --monitor)     want_monitor=1; want_flash=1 ;;
     *) echo "build-app.sh: unknown arg $1" >&2; exit 2 ;;
@@ -58,6 +58,9 @@ case "$TARGET" in
   # xtensa-esp-elf-gcc: the generic driver's default multilib is big-endian,
   # which mismatches IDF's esp32 config (linker rejects the archive).
   esp32)    XGCC="$HOME/.espressif/tools/xtensa-esp-elf/esp-14.2.0_20260121/xtensa-esp-elf/bin/xtensa-esp32-elf-gcc" ;;
+  # C6 shares the C3's compiler (spinel only probes it for the pointer width).
+  esp32c6)  XGCC="$HOME/.espressif/tools/riscv32-esp-elf/esp-14.2.0_20260121/riscv32-esp-elf/bin/riscv32-esp-elf-gcc" ;;
+  esp32s3)  XGCC="$HOME/.espressif/tools/xtensa-esp-elf/esp-14.2.0_20260121/xtensa-esp-elf/bin/xtensa-esp32s3-elf-gcc" ;;
 esac
 
 echo "==> spinel C generation: $rb"

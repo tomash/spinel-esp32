@@ -1,0 +1,7 @@
+# sdkconfig.defaults.esp32s3 -- added on top of sdkconfig.defaults for
+# IDF_TARGET=esp32s3 (idf.py reads sdkconfig.defaults.<target> itself).
+#
+# M5StickS3: no USB-UART bridge; the only USB port is the S3's own
+# USB-Serial/JTAG peripheral, so stdout (spinel's puts) and the boot log go
+# there instead of UART0. esptool flashes over the same port.
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y

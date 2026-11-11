@@ -13,6 +13,7 @@
  */
 
 #include "esp_log.h"
+#include "board.h"
 
 /* Not including spinel_rt.h: it has non-inline definitions, and the
  * generated app.c (same component) already compiles them once. Just
@@ -21,6 +22,9 @@ int main(int argc, char **argv);
 
 void app_main(void)
 {
+    /* board first: on PMIC-held boards (M5StickS3) this keeps the power on */
+    int brc = board_init();
+    ESP_LOGI("spinel", "board: %s (init %d)", board_name(), brc);
     ESP_LOGI("spinel", "spinel app_main: calling generated main()");
     /* argc=0/argv=NULL: no ARGV on target; spinel's TU only stashes them. */
     int rc = main(0, NULL);

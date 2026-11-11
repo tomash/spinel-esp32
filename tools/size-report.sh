@@ -9,7 +9,7 @@
 # the runtime are listed -- that number gates the small-MCU tiers.
 #
 # Usage:
-#   tools/size-report.sh [--target=esp32c3|esp32] app/size/empty.rb app/blink.rb ...
+#   tools/size-report.sh [--target=esp32c3|esp32|esp32c6|esp32s3] app/size/empty.rb app/blink.rb ...
 #
 # Writes build/size/<app>-<target>[-<variant>].txt per app.
 #
@@ -38,6 +38,8 @@ done
 case "$TARGET" in
   esp32c3) XGCC="$HOME/.espressif/tools/riscv32-esp-elf/esp-14.2.0_20260121/riscv32-esp-elf/bin/riscv32-esp-elf-gcc" ;;
   esp32)   XGCC="$HOME/.espressif/tools/xtensa-esp-elf/esp-14.2.0_20260121/xtensa-esp-elf/bin/xtensa-esp32-elf-gcc" ;;
+  esp32c6) XGCC="$HOME/.espressif/tools/riscv32-esp-elf/esp-14.2.0_20260121/riscv32-esp-elf/bin/riscv32-esp-elf-gcc" ;;
+  esp32s3) XGCC="$HOME/.espressif/tools/xtensa-esp-elf/esp-14.2.0_20260121/xtensa-esp-elf/bin/xtensa-esp32s3-elf-gcc" ;;
   *) echo "size-report.sh: unknown target $TARGET" >&2; exit 2 ;;
 esac
 
