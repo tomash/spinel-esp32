@@ -1,4 +1,6 @@
-/* Minimal Ruby-facing drawing API for the LilyGO T-Display ST7789V. */
+/* Minimal Ruby-facing drawing API for an ST7789-family SPI panel (LilyGO
+ * T-Display, M5StickS3 ST7789V2, M5StickC ST7735S). Pins, geometry and
+ * backlight come from the board file: board_display() in boards/<board>.c. */
 #include <ctype.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -13,18 +15,9 @@
 #include "esp_lcd_panel_vendor.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
+#include "board.h"
 
-#define TDISPLAY_WIDTH_PORTRAIT  135
-#define TDISPLAY_HEIGHT_PORTRAIT 240
-#define TDISPLAY_WIDTH_LANDSCAPE  240
-#define TDISPLAY_HEIGHT_LANDSCAPE 135
-#define TDISPLAY_MAX_ROW          TDISPLAY_WIDTH_LANDSCAPE
-#define TDISPLAY_MOSI   19
-#define TDISPLAY_SCLK   18
-#define TDISPLAY_CS     5
-#define TDISPLAY_DC     16
-#define TDISPLAY_RST    23
-#define TDISPLAY_BL     4
+#define TDISPLAY_MAX_ROW 240   /* the longest edge of any panel here */
 
 /* Onboard push buttons, both active-low with external pull-ups:
      idx 0 = GPIO0  (left / BOOT button)
@@ -42,8 +35,15 @@ static DMA_ATTR uint16_t s_row[TDISPLAY_MAX_ROW];
    window; esp32_display_set_orientation(1) switches to landscape by
    transposing the scan direction (MADCTL MV) and swapping the address
    window offset, so draw_bitmap coordinates are what the caller thinks. */
-static int s_width  = TDISPLAY_WIDTH_PORTRAIT;
-static int s_height = TDISPLAY_HEIGHT_PORTRAIT;
+static const board_display_t *s_cfg;
+
+/* RGB565 as this panel wants it on the wire (see board_display_t.swap_bytes) */
+static inline uint16_t px(int color)
+{
+    uint16_t c = (uint16_t)color;
+    return (s_cfg && s_cfg->swap_bytes) ? (uint16_t)((c >> 8) | (c << 8)) : c;
+}
+static int s_width, s_height;
 
 static bool color_transfer_done(esp_lcd_panel_io_handle_t io, esp_lcd_panel_io_event_data_t *event, void *ctx)
 {
@@ -80,36 +80,45 @@ static esp_err_t draw_row(int x, int y, int width)
 int esp32_display_init(void)
 {
     if (s_panel) return ESP_OK;
-
+    s_cfg = board_display();
+    if (!s_cfg) return ESP_ERR_NOT_SUPPORTED;
+    s_width = s_cfg->width;
+    s_height = s_cfg->height;
+    /* rails first: on the M5StickC the panel logic itself runs off an AXP192
+       LDO, so it must be up before the reset and init commands */
+    board_display_power(1);
+    esp_err_t err;
+    if (s_cfg->bl >= 0) {
     gpio_config_t backlight = {
-        .pin_bit_mask = 1ULL << TDISPLAY_BL,
+        .pin_bit_mask = 1ULL << s_cfg->bl,
         .mode = GPIO_MODE_OUTPUT,
         .pull_up_en = GPIO_PULLUP_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
         .intr_type = GPIO_INTR_DISABLE,
     };
-    esp_err_t err = gpio_config(&backlight);
+    err = gpio_config(&backlight);
     if (err != ESP_OK) return err;
+    }
 
     s_tx_done = xSemaphoreCreateBinary();
     if (!s_tx_done) return ESP_ERR_NO_MEM;
 
     spi_bus_config_t bus = {
-        .sclk_io_num = TDISPLAY_SCLK,
-        .mosi_io_num = TDISPLAY_MOSI,
+        .sclk_io_num = s_cfg->sclk,
+        .mosi_io_num = s_cfg->mosi,
         .miso_io_num = -1,
         .quadwp_io_num = -1,
         .quadhd_io_num = -1,
         .max_transfer_sz = sizeof(s_row) + 1,
     };
-    err = spi_bus_initialize(SPI2_HOST, &bus, SPI_DMA_CH_AUTO);
+    err = spi_bus_initialize(s_cfg->host, &bus, SPI_DMA_CH_AUTO);
     if (err != ESP_OK) return err;
 
     esp_lcd_panel_io_spi_config_t io_config = {
-        .dc_gpio_num = TDISPLAY_DC,
-        .cs_gpio_num = TDISPLAY_CS,
+        .dc_gpio_num = s_cfg->dc,
+        .cs_gpio_num = s_cfg->cs,
         .spi_mode = 0,
-        .pclk_hz = 40 * 1000 * 1000,
+        .pclk_hz = s_cfg->pclk_hz,
         .trans_queue_depth = 1,
         .on_color_trans_done = color_transfer_done,
         .user_ctx = s_tx_done,
@@ -117,12 +126,12 @@ int esp32_display_init(void)
         .lcd_param_bits = 8,
     };
     esp_lcd_panel_io_handle_t io = NULL;
-    err = esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)SPI2_HOST, &io_config, &io);
+    err = esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)s_cfg->host, &io_config, &io);
     if (err != ESP_OK) return err;
 
     esp_lcd_panel_dev_config_t panel_config = {
-        .reset_gpio_num = TDISPLAY_RST,
-        .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB,
+        .reset_gpio_num = s_cfg->rst,
+        .rgb_ele_order = s_cfg->bgr ? LCD_RGB_ELEMENT_ORDER_BGR : LCD_RGB_ELEMENT_ORDER_RGB,
         .data_endian = LCD_RGB_DATA_ENDIAN_LITTLE,
         .bits_per_pixel = 16,
     };
@@ -133,15 +142,17 @@ int esp32_display_init(void)
     err = esp_lcd_panel_init(s_panel);
     if (err != ESP_OK) return err;
 
-    /* T-Display glass exposes a 135x240 window inside the ST7789 RAM, seen
-       through a 52/40 address-window offset in the as-mounted orientation. */
-    err = esp_lcd_panel_set_gap(s_panel, 52, 40);
+    /* the glass is a window inside the controller RAM (T-Display/StickS3:
+       135x240 at 52/40; StickC: 80x160 in 132x162 at 26/1) */
+    err = esp_lcd_panel_mirror(s_panel, s_cfg->mirror_x, s_cfg->mirror_y);
     if (err != ESP_OK) return err;
-    err = esp_lcd_panel_invert_color(s_panel, true);
+    err = esp_lcd_panel_set_gap(s_panel, s_cfg->gap_x, s_cfg->gap_y);
+    if (err != ESP_OK) return err;
+    err = esp_lcd_panel_invert_color(s_panel, s_cfg->invert);
     if (err != ESP_OK) return err;
     err = esp_lcd_panel_disp_on_off(s_panel, true);
     if (err != ESP_OK) return err;
-    return gpio_set_level(TDISPLAY_BL, 1);
+    return s_cfg->bl >= 0 ? gpio_set_level(s_cfg->bl, 1) : ESP_OK;
 }
 
 /* Rotate the logical drawing surface. 0 = portrait (135x240, as mounted),
@@ -165,18 +176,19 @@ int esp32_display_set_orientation(int landscape)
     if (err != ESP_OK) return err;
     /* MX only matters in landscape; clear it in portrait (MX with no MV
        would mirror the upright portrait view). */
-    err = esp_lcd_panel_mirror(s_panel, landscape != 0, false);
+    err = landscape ? esp_lcd_panel_mirror(s_panel, s_cfg->mirror_x_land, s_cfg->mirror_y_land)
+                    : esp_lcd_panel_mirror(s_panel, s_cfg->mirror_x, s_cfg->mirror_y);
     if (err != ESP_OK) return err;
     if (landscape) {
-        err = esp_lcd_panel_set_gap(s_panel, 40, 53);
+        err = esp_lcd_panel_set_gap(s_panel, s_cfg->gap_x_land, s_cfg->gap_y_land);
         if (err != ESP_OK) return err;
-        s_width  = TDISPLAY_WIDTH_LANDSCAPE;
-        s_height = TDISPLAY_HEIGHT_LANDSCAPE;
+        s_width  = s_cfg->height;
+        s_height = s_cfg->width;
     } else {
-        err = esp_lcd_panel_set_gap(s_panel, 52, 40);
+        err = esp_lcd_panel_set_gap(s_panel, s_cfg->gap_x, s_cfg->gap_y);
         if (err != ESP_OK) return err;
-        s_width  = TDISPLAY_WIDTH_PORTRAIT;
-        s_height = TDISPLAY_HEIGHT_PORTRAIT;
+        s_width  = s_cfg->width;
+        s_height = s_cfg->height;
     }
     return ESP_OK;
 }
@@ -222,7 +234,7 @@ int esp32_display_clear(int color)
 {
     if (!s_panel) return ESP_ERR_INVALID_STATE;
     wait_for_transfer();
-    for (int x = 0; x < s_width; x++) s_row[x] = (uint16_t)color;
+    for (int x = 0; x < s_width; x++) s_row[x] = px(color);
     for (int y = 0; y < s_height; y++) {
         esp_err_t err = draw_row(0, y, s_width);
         if (err != ESP_OK) return err;
@@ -246,7 +258,7 @@ int esp32_display_rect(int x, int y, int width, int height, int color, int fille
 
     for (int row = y0; row < y1; row++) {
         if (!filled && row != y0 && row != y1 - 1) continue;
-        for (int col = 0; col < x1 - x0; col++) s_row[col] = (uint16_t)color;
+        for (int col = 0; col < x1 - x0; col++) s_row[col] = px(color);
         if (!filled && x1 - x0 > 2) {
             /* Draw outline edges only; interior pixels are not submitted. */
             esp_err_t err = draw_row(x0, row, 1);
@@ -297,10 +309,10 @@ int esp32_display_text(const char *text, int x, int y, int fg, int bg, int scale
             const uint8_t *glyph = (ch >= 32 && ch <= 90) ? font[ch - 32] : font['?'-32];
             for (int gx = 0; gx < 6 && col < width; gx++) {
                 bool on = gx < 5 && ((glyph[gx] >> gy) & 1);
-                for (int sx = 0; sx < scale && col < width; sx++) s_row[col++] = (uint16_t)(on ? fg : bg);
+                for (int sx = 0; sx < scale && col < width; sx++) s_row[col++] = px(on ? fg : bg);
             }
         }
-        while (col < width) s_row[col++] = (uint16_t)bg;
+        while (col < width) s_row[col++] = px(bg);
         for (int sy = 0; sy < scale; sy++) {
             int py = y + gy * scale + sy;
             if (py < 0 || py >= s_height) continue;

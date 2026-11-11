@@ -4,6 +4,7 @@
  * battery voltage is a 12-bit reading in 0x78:0x79, 1.1 mV per LSB. */
 #include "board.h"
 #include "board_common.h"
+#include "driver/spi_master.h"
 
 static const int buttons[] = { 37, 39 };
 static int s_pmic_ok;
@@ -23,4 +24,19 @@ int board_battery_mv(void) {
 }
 int board_button_count(void) { return bc_button_count(); }
 int board_button_pressed(int idx) { return bc_button_pressed(idx); }
-int board_has_lcd(void) { return 0; }   /* ST7735S 80x160: not driven yet */
+int board_has_lcd(void) { return 1; }
+
+static const board_display_t s_disp = {
+    .host = SPI2_HOST, .sclk = 13, .mosi = 15, .cs = 5, .dc = 23, .rst = 18, .bl = -1,
+    .width = 80, .height = 160, .gap_x = 26, .gap_y = 1, .gap_x_land = 1, .gap_y_land = 26,
+    .mirror_x = 1, .mirror_y = 1, .mirror_x_land = 1, .mirror_y_land = 0,
+    .invert = 1, .bgr = 1, .swap_bytes = 1, .pclk_hz = 27 * 1000 * 1000,
+};
+const board_display_t *board_display(void) { return &s_disp; }
+int board_display_power(int on) {
+    uint8_t en;
+    if (!s_pmic_ok || bc_i2c_read(0x12, &en, 1) != 0) return -1;
+    bc_i2c_write8(0x28, 0xCC);                  /* LDO2 = LDO3 = 3.0 V */
+    en = on ? (en | 0x0C) : (en & ~0x0C);       /* bit2 LDO2, bit3 LDO3 */
+    return bc_i2c_write8(0x12, en);
+}

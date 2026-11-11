@@ -40,3 +40,25 @@ int board_button_pressed(int idx);
 
 /* 1 when the board has a display driven by firmware/main (tdisplay.c). */
 int board_has_lcd(void);
+
+/* The display, for tdisplay.c (an ST7789-family SPI panel driver; ST7735S
+ * speaks the same command set). Offsets are the visible window inside the
+ * controller's RAM, per orientation; mirror flags are what makes text read
+ * upright on the board as mounted. bl < 0: the backlight is not a GPIO, and
+ * board_display_power() switches it (PMIC rails). NULL: no display. */
+typedef struct {
+    int host;                        /* SPI2_HOST / SPI3_HOST */
+    int sclk, mosi, cs, dc, rst, bl;
+    int width, height;               /* portrait, as mounted */
+    int gap_x, gap_y;                /* portrait offsets */
+    int gap_x_land, gap_y_land;      /* landscape offsets */
+    int mirror_x, mirror_y;          /* portrait */
+    int mirror_x_land, mirror_y_land;
+    int invert, bgr;
+    int swap_bytes;   /* send each RGB565 pixel byte-swapped: panels whose
+                         byte order esp_lcd's ST7789 RAMCTRL cannot set
+                         (ST7735S, where 0xB0 is a frame-rate register) */
+    int pclk_hz;
+} board_display_t;
+const board_display_t *board_display(void);
+int board_display_power(int on);

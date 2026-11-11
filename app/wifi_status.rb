@@ -376,11 +376,21 @@ module TDisplay
   ffi_func :esp32_display_text,  [:str, :int, :int, :int, :int, :int], :int
 end
 
-# Panel driven in landscape 240x135 (set_orientation(1) transposes the
-# MADCTL scan so x runs along the long glass edge -- the wide axis fits the
-# full URL/host lines without wrapping). Colors: RGB565.
-W = 240
-H = 135
+# Panel driven in landscape (set_orientation(1) transposes the MADCTL scan so
+# x runs along the long glass edge). Size comes from the driver after the
+# rotation: 240x135 on the T-Display and the M5StickS3, 160x80 on the
+# M5StickC, which gets the compact layout. Colors: RGB565.
+$w = 240
+$h = 135
+
+def lcd_small
+  $h < 100
+end
+
+# Title bar text: the board's name, cut to what fits at 6 px per glyph.
+def lcd_title
+  board_name.upcase[0, ($w / 6) - 2]
+end
 
 # Battery-present threshold. No pack wired to the divider reads ~0.0-0.3 V
 # (floating pin); a real single-cell LiPo sits well above 3 V. Below the
@@ -403,19 +413,29 @@ def lcd_boot
     puts "LCD: init failed (#{rc}) -- continuing headless"
     return false
   end
-  rc = TDisplay.esp32_display_set_orientation(1)   # landscape 240x135
+  rc = TDisplay.esp32_display_set_orientation(1)   # landscape
   if rc != 0
     puts "LCD: orientation set failed (#{rc}) -- continuing as-is"
     return false
   end
+  $w = TDisplay.esp32_display_width
+  $h = TDisplay.esp32_display_height
   TDisplay.esp32_display_clear(0x0000)
   true
 end
 
 def lcd_show_booting(ssid)
   return unless $lcd_ok
-  TDisplay.esp32_display_rect(0, 0, W, 28, 0x001F, 1)          # blue title bar
-  TDisplay.esp32_display_text("TTGO T-DISPLAY", 6, 9, 0xFFFF, 0x001F, 1)
+  if lcd_small
+    TDisplay.esp32_display_rect(0, 0, $w, 12, 0x001F, 1)
+    TDisplay.esp32_display_text(lcd_title, 3, 2, 0xFFFF, 0x001F, 1)
+    TDisplay.esp32_display_text("SPINEL", 3, 18, 0x07E0, 0x0000, 2)
+    TDisplay.esp32_display_text("WIFI: #{ssid[0, ($w / 6) - 7]}", 3, 46, 0xFFE0, 0x0000, 1)
+    TDisplay.esp32_display_text("CONNECTING...", 3, 60, 0xFFFF, 0x0000, 1)
+    return
+  end
+  TDisplay.esp32_display_rect(0, 0, $w, 28, 0x001F, 1)          # blue title bar
+  TDisplay.esp32_display_text(lcd_title, 6, 9, 0xFFFF, 0x001F, 1)
   TDisplay.esp32_display_text("SPINEL ESP32", 8, 44, 0x07E0, 0x0000, 2)
   TDisplay.esp32_display_text("WIFI: #{ssid[0, 32]}", 8, 84, 0xFFE0, 0x0000, 1)
   TDisplay.esp32_display_text("CONNECTING...", 8, 110, 0xFFFF, 0x0000, 1)
@@ -424,8 +444,17 @@ end
 def lcd_show_running(ip, host, cell_v)
   return unless $lcd_ok
   TDisplay.esp32_display_clear(0x0000)
-  TDisplay.esp32_display_rect(0, 0, W, 24, 0x001F, 1)          # blue title bar
-  TDisplay.esp32_display_text("TTGO T-DISPLAY", 6, 7, 0xFFFF, 0x001F, 1)
+  if lcd_small
+    # 160x80: title, the IP big enough to read, the .local name, battery
+    TDisplay.esp32_display_rect(0, 0, $w, 12, 0x001F, 1)
+    TDisplay.esp32_display_text(lcd_title, 3, 2, 0xFFFF, 0x001F, 1)
+    TDisplay.esp32_display_text(ip, 3, 18, 0x07E0, 0x0000, ip.size * 12 <= $w ? 2 : 1)
+    TDisplay.esp32_display_text("#{host}.local"[0, ($w / 6) - 1], 3, 44, 0x07E0, 0x0000, 1)
+    lcd_battery_line(cell_v)
+    return
+  end
+  TDisplay.esp32_display_rect(0, 0, $w, 24, 0x001F, 1)          # blue title bar
+  TDisplay.esp32_display_text(lcd_title, 6, 7, 0xFFFF, 0x001F, 1)
   # the one thing the screen exists for: the address to open
   TDisplay.esp32_display_text("HTTP://", 6, 34, 0x07E0, 0x0000, 1)
   # IP auto-sizes: scale 2 (12 px/char + spacing) fits up to 19 chars;
@@ -441,14 +470,15 @@ end
 
 def lcd_battery_line(cell_v)
   return unless $lcd_ok
-  TDisplay.esp32_display_rect(0, H - 12, W, 12, 0x0000, 1)     # wipe footer
-  TDisplay.esp32_display_text(batt_label(cell_v), 6, H - 12, 0xFFE0, 0x0000, 1)
+  TDisplay.esp32_display_rect(0, $h - 12, $w, 12, 0x0000, 1)     # wipe footer
+  TDisplay.esp32_display_text(batt_label(cell_v), lcd_small ? 3 : 6, $h - 12, 0xFFE0, 0x0000, 1)
 end
 
 def lcd_show_wifi_failed
   return unless $lcd_ok
-  TDisplay.esp32_display_text("WIFI: NO LINK", 6, 96, 0xF800, 0x0000, 1)
-  TDisplay.esp32_display_text("SERVING IP ONLY", 6, 112, 0xFFFF, 0x0000, 1)
+  y = lcd_small ? 46 : 96
+  TDisplay.esp32_display_text("WIFI: NO LINK", lcd_small ? 3 : 6, y, 0xF800, 0x0000, 1)
+  TDisplay.esp32_display_text("SERVING IP ONLY", lcd_small ? 3 : 6, y + 14, 0xFFFF, 0x0000, 1)
 end
 
 # ---- buffers for the out-param FFI calls (String allocated in Ruby) ----

@@ -13,3 +13,5 @@ int board_battery_mv(void) { bc_adc_battery_init(ADC_CHANNEL_2, 2); return bc_ad
 int board_button_count(void) { return 0; }
 int board_button_pressed(int idx) { (void)idx; return -1; }
 int board_has_lcd(void) { return 0; }
+const board_display_t *board_display(void) { return 0; }
+int board_display_power(int on) { (void)on; return -1; }

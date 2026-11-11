@@ -6,11 +6,13 @@
  * what a plain reset looked like before this board file existed. The PMIC
  * also owns the green LED (PWR_CFG bit 4) and reads the battery
  * (VBAT, 0x22, little-endian millivolts). Buttons KEY1 GPIO11, KEY2 GPIO12,
- * active low. The ST7789P3 135x240 panel is not driven yet. */
+ * active low. Display: ST7789V2 135x240 (M5GFX board data: SCLK40 MOSI39
+ * DC45 CS41 RST21, backlight GPIO38, window 52/40 like the T-Display). */
 #include "board.h"
 #include "board_common.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "driver/spi_master.h"
 
 #define PM1_ADDR      0x6E
 #define PM1_PWR_CFG   0x06
@@ -18,11 +20,19 @@
 #define PM1_WDT_CNT   0x0A
 #define PM1_GPIO_MODE 0x10
 #define PM1_GPIO_FUNC0 0x16
+#define PM1_GPIO_OUT  0x11
+#define PM1_GPIO_DRV  0x13
 #define PM1_VBAT_L    0x22
 #define PM1_LED_EN    (1 << 4)
 
 static const int buttons[] = { 11, 12 };
 static int s_pmic_ok;
+
+static int pm1_bits(uint8_t reg, uint8_t mask, int on) {
+    uint8_t v;
+    if (bc_i2c_read(reg, &v, 1) != 0) return -1;
+    return bc_i2c_write8(reg, on ? (v | mask) : (v & ~mask));
+}
 
 int board_init(void) {
     bc_buttons_init(buttons, 2);
@@ -34,6 +44,13 @@ int board_init(void) {
     if (!s_pmic_ok) return -2;
     bc_i2c_write8(PM1_I2C_CFG, 0x00);   /* no I2C idle sleep */
     bc_i2c_write8(PM1_WDT_CNT, 0x00);   /* no PMIC watchdog */
+    /* PM1 GPIO2 = L3B_EN, the display's power rail: plain GPIO, output,
+       push-pull, high (M5GFX pmic_ops::sticks3_power_on). Without it the
+       panel takes its init commands and stays dark. */
+    pm1_bits(PM1_GPIO_FUNC0, 0x04, 0);
+    pm1_bits(PM1_GPIO_MODE, 0x04, 1);
+    pm1_bits(PM1_GPIO_DRV, 0x04, 0);
+    pm1_bits(PM1_GPIO_OUT, 0x04, 1);
     return 0;
 }
 const char *board_name(void) { return "M5StickS3 (ESP32-S3)"; }
@@ -52,4 +69,13 @@ int board_battery_mv(void) {
 }
 int board_button_count(void) { return bc_button_count(); }
 int board_button_pressed(int idx) { return bc_button_pressed(idx); }
-int board_has_lcd(void) { return 0; }
+int board_has_lcd(void) { return 1; }
+
+static const board_display_t s_disp = {
+    .host = SPI3_HOST, .sclk = 40, .mosi = 39, .cs = 41, .dc = 45, .rst = 21, .bl = 38,
+    .width = 135, .height = 240, .gap_x = 52, .gap_y = 40, .gap_x_land = 40, .gap_y_land = 53,
+    .mirror_x = 0, .mirror_y = 0, .mirror_x_land = 1, .mirror_y_land = 0,
+    .invert = 1, .bgr = 0, .pclk_hz = 40 * 1000 * 1000,
+};
+const board_display_t *board_display(void) { return &s_disp; }
+int board_display_power(int on) { (void)on; return 0; }
