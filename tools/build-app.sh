@@ -129,7 +129,14 @@ if [[ "$mode" == "--emit-only" ]]; then
 fi
 
 echo "==> host compile (gcc, static-ish for size realism)"
-gcc -O2 -ffunction-sections -fdata-sections -Wl,--gc-sections \
+# Section GC is spelled by the linker: ld64 (macOS) takes -dead_strip, GNU ld
+# --gc-sections (upstream spinel's src/main.c makes the same switch).
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  GC_SECTIONS="-Wl,-dead_strip"
+else
+  GC_SECTIONS="-Wl,--gc-sections"
+fi
+gcc -O2 -ffunction-sections -fdata-sections "$GC_SECTIONS" \
     -I"$ROOT/vendor/spinel/lib" -I"$ROOT/vendor/spinel/lib/regexp" \
     "$OUT/$base.c" "$ROOT/vendor/spinel/lib/libspinel_rt.a" -lm -lpthread \
     -o "$OUT/$base"
