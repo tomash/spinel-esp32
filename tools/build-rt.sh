@@ -74,7 +74,7 @@ if [[ -z "$CROSS" || ! -x "$CROSS/bin/$GCC_NAME" ]]; then
   exit 1
 fi
 CC="$CROSS/bin/$GCC_NAME"
-AR="$CROSS/bin/$AR_NAME"
+AR="${RT_AR:-$CROSS/bin/$AR_NAME}"   # RT_AR: gcc-ar for LTO archives
 echo "CC  = $CC"
 echo "AR  = $AR"
 "$CC" --version | head -1

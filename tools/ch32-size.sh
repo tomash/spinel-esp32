@@ -17,8 +17,11 @@
 #   SPINEL_PRESET=small                      presets/<name>.defs for the app TU
 #   SPINEL_FLAGS=--no-bigint                 extra spinel flags
 #   APP_OPT=-Os                              app TU optimisation
+#   LINK_FLAGS="-flto -Os"                   extra link flags (LTO needs the opt level here too)
 #   FLASH_KB=64 RAM_KB=20                    budget
 #   TOP=15                                   rows in the per-object breakdown
+#   EXTRA_SRCS="baremetal/tinystdio.c"        C files linked ahead of newlib (board layer)
+#   APP_DEFS="-DSP_NO_SLAB"                  extra flags for the app TU (match the runtime's switches)
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SPINEL_SRC="${SPINEL_SRC:-$ROOT/vendor/spinel}"
@@ -36,17 +39,25 @@ OUT="$ROOT/build/ch32"; mkdir -p "$OUT"
 DEFS="-DSP_NO_SIGNALS -D__ESP32_SHIM__"
 DEFS="$DEFS $(grep -v '^#' "$ROOT/presets/$PRESET.defs" | grep . | sed 's/^/-D/' | tr '\n' ' ')"
 for f in $(sed -n 's/^override COPT += *//p' "$SPINEL_SRC/Makefile" 2>/dev/null); do DEFS="$DEFS $f"; done
+DEFS="$DEFS ${APP_DEFS:-}"
 INC="-I$ROOT/shim/esp32/include -I$SPINEL_SRC/lib -I$SPINEL_SRC/lib/regexp"
 
 "$CC" $ARCH -c "$ROOT/baremetal/crt0.S" -o "$OUT/crt0.o"
+EXTRA_OBJS=""
+for src in ${EXTRA_SRCS:-}; do
+  o="$OUT/extra-$(basename "$src" .c).o"
+  # shellcheck disable=SC2086
+  "$CC" $ARCH ${APP_OPT:--Os} -ffunction-sections -fdata-sections -fno-builtin -c "$ROOT/$src" -o "$o"
+  EXTRA_OBJS="$EXTRA_OBJS $o"
+done
 for rb in "$@"; do
   b="$(basename "$rb" .rb)"
   # shellcheck disable=SC2086
   "$SPINEL_BIN" "$rb" -S --cc="$CC" $FLAGS > "$OUT/$b.c"
   # shellcheck disable=SC2086
   "$CC" $ARCH ${APP_OPT:--Os} -ffunction-sections -fdata-sections -w $INC $DEFS -c "$OUT/$b.c" -o "$OUT/$b.o"
-  "$CC" $ARCH -nostartfiles -specs=nano.specs -T "$ROOT/baremetal/measure.ld" \
-    -Wl,--gc-sections -Wl,-Map="$OUT/$b.map" "$OUT/crt0.o" "$OUT/$b.o" \
+  "$CC" $ARCH ${LINK_FLAGS:-} -nostartfiles -specs=nano.specs -T "$ROOT/baremetal/measure.ld" \
+    -Wl,--gc-sections -Wl,-Map="$OUT/$b.map" "$OUT/crt0.o" "$OUT/$b.o" $EXTRA_OBJS \
     "$RT_DIR/libspinel_rt_esp32.a" -lm -lc_nano -lnosys -o "$OUT/$b.elf" >"$OUT/$b.link.log" 2>&1
   read -r text data bss _ < <("$SIZE" "$OUT/$b.elf" | tail -1)
   python3 - "$OUT/$b.map" "$b" "$text" "$data" "$bss" "$FLASH_KB" "$RAM_KB" "$TOP" <<'EOF'
