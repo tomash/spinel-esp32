@@ -136,7 +136,9 @@ int net_wifi_ap_info(char *ssid_out, int cap, int *chan_out) {
     if (esp_wifi_sta_get_ap_info(&ap) != ESP_OK) return -999;
     memset(ssid_out, 0, (size_t)cap);
     strncpy(ssid_out, (const char *)ap.ssid, (size_t)(cap - 1));
-    if (chan_out) *chan_out = (int)ap.primary;
+    /* chan_out points into a Ruby String's bytes (maybe unaligned) */
+    int chan = (int)ap.primary;
+    if (chan_out) memcpy(chan_out, &chan, sizeof chan);
     return (int)ap.rssi;
 }
 

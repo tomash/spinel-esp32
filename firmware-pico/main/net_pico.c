@@ -75,23 +75,40 @@ int net_wifi_connected(void)
 {
     int st = cyw43_tcpip_link_status(&cyw43_state, CYW43_ITF_STA);
     if (st == CYW43_LINK_UP) return 1;
-    /* failed joins (no AP, bad auth, dropped): retry a bounded number of
-     * times, as the ESP event handler does */
-    if ((st == CYW43_LINK_FAIL || st == CYW43_LINK_NONET || st == CYW43_LINK_BADAUTH ||
-         st == CYW43_LINK_DOWN) && s_retries < 40) {
+    /* failed joins (no AP, bad auth): retry a bounded number of times, as
+     * the ESP event handler does. Not on CYW43_LINK_DOWN: that is also what
+     * a join still in progress reads, and re-issuing it every poll restarts
+     * the join under the driver's feet (it hung the radio). */
+    if ((st == CYW43_LINK_FAIL || st == CYW43_LINK_NONET || st == CYW43_LINK_BADAUTH) &&
+        s_retries < 40) {
         s_retries++;
         net_wifi_connect();
     }
     return 0;
 }
 
+/* The CYW43 reports every beacon it hears, so one AP shows up many times:
+ * print each SSID once. The channel of our own SSID is remembered for
+ * net_wifi_ap_info (the driver has no channel query). */
+#define SCAN_MAX 32
+static struct { int count; } s_scan;
+static uint8_t s_seen[SCAN_MAX][33];
+static int s_ap_channel = 0;
+
 static int scan_cb(void *env, const cyw43_ev_scan_result_t *r)
 {
-    int *count = env;
-    (*count)++;
+    (void)env;
+    char ssid[33];
+    size_t n = r->ssid_len < 32 ? r->ssid_len : 32;
+    memcpy(ssid, r->ssid, n);
+    ssid[n] = 0;
+    if (strcmp(ssid, WIFI_SSID) == 0) s_ap_channel = r->channel;
+    for (int i = 0; i < s_scan.count; i++)
+        if (strcmp((const char *)s_seen[i], ssid) == 0) return 0;
+    if (s_scan.count < SCAN_MAX) memcpy(s_seen[s_scan.count++], ssid, n + 1);
     const char *am = r->auth_mode == 0 ? "OPEN" : (r->auth_mode & 4) ? "WPA2" :
                      (r->auth_mode & 2) ? "WPA" : "WEP";
-    printf("SCAN: %-24.24s rssi %4d ch %2d %s\n", (const char *)r->ssid,
+    printf("SCAN: %-24.24s rssi %4d ch %2d %s\n", ssid[0] ? ssid : "(hidden)",
            (int)r->rssi, (int)r->channel, am);
     return 0;
 }
@@ -99,11 +116,11 @@ static int scan_cb(void *env, const cyw43_ev_scan_result_t *r)
 int net_wifi_scan(void)
 {
     if (sp_pico_cyw43_up() != 0) return -1;
-    int count = 0;
+    s_scan.count = 0;
     cyw43_wifi_scan_options_t opts = {0};
-    if (cyw43_wifi_scan(&cyw43_state, &opts, &count, scan_cb) != 0) return -2;
+    if (cyw43_wifi_scan(&cyw43_state, &opts, NULL, scan_cb) != 0) return -2;
     while (cyw43_wifi_scan_active(&cyw43_state)) vTaskDelay(pdMS_TO_TICKS(50));
-    return count;
+    return s_scan.count;
 }
 
 int net_wifi_ap_info(char *ssid_out, int cap, int *chan_out)
@@ -113,7 +130,11 @@ int net_wifi_ap_info(char *ssid_out, int cap, int *chan_out)
     if (cyw43_wifi_get_rssi(&cyw43_state, &rssi) != 0) return -999;
     memset(ssid_out, 0, (size_t)cap);
     strncpy(ssid_out, WIFI_SSID, (size_t)(cap - 1));
-    if (chan_out) *chan_out = 0;   /* the driver has no channel query */
+    /* chan_out points into a Ruby String's bytes, which need not be 4-byte
+     * aligned, and the Hazard3 cores trap on a misaligned store (the C3
+     * does not): copy, never store through the int pointer. */
+    int chan = s_ap_channel;   /* from the last scan; 0 if none saw the AP */
+    if (chan_out) memcpy(chan_out, &chan, sizeof chan);
     return (int)rssi;
 }
 

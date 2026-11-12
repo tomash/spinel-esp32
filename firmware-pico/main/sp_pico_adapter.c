@@ -45,7 +45,11 @@ int spinel_app_main(int argc, char **argv);
 static void sp_pico_boot_guard_arm(void)
 {
 #if SP_PICO_BOOT_GUARD_MS > 0
-    if (watchdog_hw->scratch[0] == SP_PICO_GUARD_MAGIC) {
+    /* Only a watchdog *timeout* counts: a forced reboot (picotool, the
+     * BOOTSEL loader, the fault handler) can land before the Ruby task
+     * cleared the marker without anything having gone wrong. */
+    if (watchdog_hw->scratch[0] == SP_PICO_GUARD_MAGIC &&
+        (watchdog_hw->reason & WATCHDOG_REASON_TIMER_BITS)) {
         watchdog_hw->scratch[0] = 0;
         reset_usb_boot(0, 0);   /* previous boot never came up */
     }
@@ -62,10 +66,58 @@ static void sp_pico_boot_guard_clear(void)
 #endif
 }
 
+/* CPU exceptions (misaligned access, bus fault, illegal instruction): the
+ * FreeRTOS port's default handler spins (`j .`), which looks like a silent
+ * hang -- the core stops, USB half-answers, the network dies. This one
+ * records the cause in watchdog scratch 1-3 (they survive anything but a
+ * power cycle) and enters BOOTSEL; the next image to boot prints it. Printing from here is not reliable:
+ * USB serial needs interrupts. */
+#define SP_PICO_FAULT_MAGIC 0xFA000000u
+/* The boot ROM's BOOTSEL entry reuses watchdog scratch 2-3 and SRAM, so
+ * the faulting pc rides in scratch 0 (the boot guard's, free at that
+ * point); main() takes it before re-arming the guard. */
+static uint32_t sp_pico_fault_pc;
+
+void freertos_risc_v_application_exception_handler(void)
+{
+    uint32_t mcause, mepc, mtval;
+    __asm volatile ("csrr %0, mcause" : "=r"(mcause));
+    __asm volatile ("csrr %0, mepc" : "=r"(mepc));
+    __asm volatile ("csrr %0, mtval" : "=r"(mtval));
+    watchdog_hw->scratch[1] = SP_PICO_FAULT_MAGIC | (mcause & 0xffffu);
+    (void)mtval;
+    watchdog_hw->scratch[0] = mepc;       /* also: not a boot-guard failure */
+    /* Into BOOTSEL, ready for a fixed image (the next one loaded prints the
+     * report): a reboot straight back into the app -- watchdog_reboot or
+     * the ROM's normal reboot -- hangs that boot before the scheduler starts
+     * (open issue, FreeRTOS SMP on the Hazard3 cores; a power-up or the
+     * BOOTSEL loader's boot is fine). */
+    reset_usb_boot(0, 0);
+    for (;;) ;
+}
+
+static void sp_pico_report_fault(void)
+{
+    uint32_t f = watchdog_hw->scratch[1];
+    if ((f & 0xffff0000u) != SP_PICO_FAULT_MAGIC) return;
+    static const char *const names[] = {
+        "instruction misaligned", "instruction fault", "illegal instruction",
+        "breakpoint", "load misaligned", "load fault", "store misaligned",
+        "store fault" };
+    uint32_t cause = f & 0xffffu;
+    printf("spinel: previous run stopped on a CPU exception: %s (mcause %lu)",
+           cause < 8 ? names[cause] : "other", (unsigned long)cause);
+    printf(" at pc 0x%08lx (look it up: riscv32-pico-elf-addr2line -fe "
+           "firmware-pico/build/spinel_mote_app.elf 0x%08lx)\n",
+           (unsigned long)sp_pico_fault_pc, (unsigned long)sp_pico_fault_pc);
+    watchdog_hw->scratch[1] = 0;
+}
+
 static void sp_pico_task(void *arg)
 {
     (void)arg;
     sp_pico_boot_guard_clear();
+    sp_pico_report_fault();
     int brc = board_init();
     printf("spinel: board: %s (init %d)\n", board_name(), brc);
     printf("spinel: calling generated main() in a FreeRTOS task, %u-byte stack\n",
@@ -79,6 +131,8 @@ static void sp_pico_task(void *arg)
 
 int main(void)
 {
+    if ((watchdog_hw->scratch[1] & 0xffff0000u) == SP_PICO_FAULT_MAGIC)
+        sp_pico_fault_pc = watchdog_hw->scratch[0];
     sp_pico_boot_guard_arm();
     stdio_init_all();
     xTaskCreate(sp_pico_task, "spinel", SP_PICO_STACK / sizeof(StackType_t),

@@ -6,6 +6,11 @@
  * so app/wifi_status.rb is the same Ruby on both. Apps declare what they use
  * with ffi_func, e.g.  ffi_func :net_wifi_connected, [], :int
  *
+ * Out-parameters (char *, int *) usually point into a Ruby String's bytes,
+ * which need not be aligned: implementations copy into them (memcpy) and
+ * never store through an int pointer -- the RP2350's Hazard3 cores trap on
+ * a misaligned store, which the ESP32-C3 tolerated.
+ *
  * Credentials come from wifi_secrets.h (WIFI_SSID / WIFI_PASSWORD; written by
  * tools/build-app.sh from the environment or .env).
  */

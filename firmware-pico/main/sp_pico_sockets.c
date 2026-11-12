@@ -101,6 +101,10 @@ int _fstat(int fd, struct stat *st)
 
 int _isatty(int fd) { return fd >= 0 && fd <= 2; }
 
+/* File#mtime and friends (sp_cold.c): newlib declares lstat but ships none;
+ * with no file system there is nothing to find. */
+int lstat(const char *path, struct stat *st) { (void)path; (void)st; errno = ENOENT; return -1; }
+
 /* ---- 3. fcntl / ioctl / poll -------------------------------------------- */
 #define SP_O_NONBLOCK 0x4000   /* newlib's, as the runtime was built */
 
