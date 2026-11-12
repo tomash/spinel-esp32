@@ -202,6 +202,55 @@ curl http://<board>/ota/reboot
 - Both slots must keep a working image: flash a *known-good* image into the
   second slot first (OTA the clean build onto itself) before experimenting.
 
+## Boards and peripherals
+
+The same `app/*.rb` runs on every board: the apps call the board layer
+(`firmware/main/board.h`, one `firmware/main/boards/<board>.c` per board,
+weak defaults in `board_common.c`) through spinel's FFI DSL, and a call for
+hardware a board lacks answers `-1`/`nil` instead of failing. The board is
+picked at configure time with `SPINEL_BOARD` (default per target); ports for
+the flashing helper live in `boards.local` (see `boards.local.example`):
+
+```bash
+tools/board-flash.sh m5sticks3 app/imu.rb 10    # build, flash, capture 10 s
+```
+
+| Board (`SPINEL_BOARD`) | Target | LED | Buttons | Battery | Display | More |
+|---|---|---|---|---|---|---|
+| `t_oi_plus` LilyGO T-OI Plus | esp32c3 | GPIO3 | – | ADC 2:1 | – | |
+| `m5stamp_c3` M5Stamp C3 | esp32c3 | WS2812 GPIO2 (RGB) | GPIO3 | – | – | |
+| `esp32_c6_devkitc` ESP32-C6-DevKitC-1 | esp32c6 | WS2812 GPIO8 (RGB) | GPIO9 (BOOT) | – | – | Thread (802.15.4) |
+| `m5stickc` M5StickC | esp32 | GPIO10 (red) | GPIO37, GPIO39 | AXP192 | ST7735S 80×160 | MPU6886 IMU, IR LED, PDM mic |
+| `m5sticks3` M5StickS3 | esp32s3 | PMIC LED | GPIO11, GPIO12 | M5PM1 | ST7789V2 135×240 | BMI270 IMU, IR LED + receiver, ES8311 speaker + mic |
+| `t_display` LilyGO T-Display | esp32 | backlight | GPIO0, GPIO35 | ADC | ST7789 135×240 | build-checked only |
+
+Peripheral apps (all verified on hardware unless noted):
+
+| App | What it does |
+|-----|--------------|
+| `app/board_info.rb` | name, mDNS host, battery, buttons; blinks whatever the LED is |
+| `app/wifi_status.rb` | the status page + OTA, now per board (own mDNS name, LCD summary) |
+| `app/lcd_test.rb` | R/G/B/W/K bars to check colour order, inversion and mirroring |
+| `app/buttons.rb` | debounced press/release with hold time; toggles the LED or cycles the RGB colour |
+| `app/imu.rb` | accel/gyro, pitch/roll, also on the LCD |
+| `app/ir.rb` | NEC over RMT at 38 kHz: transmit-only boards send, the receiver decodes |
+| `app/audio.rb` | a C-major scale on the speaker, then live mic levels (bar on the LCD) |
+| `app/thread_status.rb` | ESP32-C6: forms a Thread network, reports the role (single node so far) |
+
+Board notes worth knowing:
+
+- **M5StickS3** — power is held by the M5PM1 PMIC (I2C 0x6E): `board_init`
+  disables its watchdog, or the board switches itself off. The display rail
+  (L3B) and the speaker amplifier are PMIC GPIOs; the IR LED needs the boost
+  converter on and the amplifier off. The BMI270 needs its 8 KB config blob
+  uploaded at boot (`boards/bmi270_config.h`, from M5Unified/Bosch). The
+  console is the S3's USB-Serial/JTAG.
+- **M5StickC** — the ST7735S needs BGR and byte-swapped pixels; red looks a
+  little dull without a panel gamma table. Its PDM mic carries a large DC
+  offset, so mic levels are the AC part (standard deviation) of the samples.
+- **Single-I2S chips** (C3, C6) have no second I2S port; the codec mic path
+  is compiled only where `SOC_I2S_NUM > 1`.
+
 ## Demo apps (all verified on hardware)
 
 | App | What it proves | Serial output |
