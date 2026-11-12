@@ -58,15 +58,22 @@ int madvise(void *addr, size_t len, int advice) { (void)addr; (void)len; (void)a
 int sigaction(int sig, const struct sigaction *act, struct sigaction *old) {
     (void)sig; (void)act; (void)old; errno = ENOSYS; return -1;
 }
+/* No socket pairs in lwip (UNIXSocket.pair, IO.pipe-like uses): fail honestly. */
+int socketpair(int domain, int type, int protocol, int sv[2]) {
+    (void)domain; (void)type; (void)protocol; (void)sv; errno = ENOSYS; return -1;
+}
 int sigaltstack(const stack_t *ss, stack_t *oss) { (void)ss; (void)oss; errno = ENOSYS; return -1; }
 int sigprocmask(int how, const sigset_t *set, sigset_t *old) { (void)how; (void)set; (void)old; errno = ENOSYS; return -1; }
 
-/* signal(): plain POSIX name (newlib exports none) -- spinel's exception
- * machinery and the (SPINEL_ALLOC_REPORT-only) GC debug path call it. */
+/* signal(): plain POSIX name (IDF's newlib exports none) -- spinel's
+ * exception machinery and the (SPINEL_ALLOC_REPORT-only) GC debug path call
+ * it. The Pico toolchain's newlib has its own (SP_SHIM_RP2350). */
 #include <stddef.h>
+#ifndef SP_SHIM_RP2350
 void (*signal(int sig, void (*handler)(int)))(int) {
     (void)sig; (void)handler; errno = ENOSYS; return NULL;
 }
+#endif
 int siginterrupt(int sig, int flag) { (void)sig; (void)flag; errno = ENOSYS; return -1; }
 
 /* ---- processes: FreeRTOS has none (the wasi precedent) ---- */
@@ -107,6 +114,7 @@ const char *gai_strerror(int errcode) {
  * timer newlib-on-IDF does not provide.  Implemented on vTaskDelay:
  * ticks are 10ms (Hz=100), rounding UP so a sub-tick sleep still
  * yields one tick.  rem is only computed when the caller asks. */
+#ifndef SP_SHIM_RP2350   /* the Pico's is in shim/rp2350/src (no FreeRTOS) */
 int nanosleep(const struct timespec *req, struct timespec *rem) {
     if (req == NULL || req->tv_nsec < 0 || req->tv_nsec >= 1000000000L) {
         return -1;
@@ -129,6 +137,7 @@ int nanosleep(const struct timespec *req, struct timespec *rem) {
     }
     return 0;
 }
+#endif /* !SP_SHIM_RP2350 */
 
 /* ---- ucontext: link-time plugs for the coroutine fallback (Xtensa only) ----
  * sp_fiber.o/sp_sched.o are always pulled from the archive (the cooperative

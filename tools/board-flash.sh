@@ -16,6 +16,12 @@ line="$(grep -E "^$board[[:space:]]" "$ROOT/boards.local" 2>/dev/null || true)"
 [[ -n "$line" ]] || { echo "board-flash.sh: no '$board' in boards.local" >&2; exit 2; }
 read -r _ target port baud <<<"$line"
 echo "==> $board: target $target, port $port${baud:+, ${baud} baud}"
+if [[ "$target" == rp2350 ]]; then
+  # Pico 2 W: picotool flashes over USB, the port is the app's USB serial.
+  SPINEL_BOARD="$board" SPINEL_ESP_PORT="$port" SPINEL_ESP_CAPTURE="$cap" \
+    "$ROOT/tools/build-app.sh" "$app" --target=rp2350 --monitor
+  exit
+fi
 if [[ "$target" != esp32s3 ]]; then
   SPINEL_BOARD="$board" SPINEL_ESP_PORT="$port" SPINEL_ESP_CAPTURE="$cap" \
     env ${baud:+ESPBAUD=$baud} "$ROOT/tools/build-app.sh" "$app" --target="$target" --monitor
