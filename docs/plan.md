@@ -38,7 +38,7 @@
 
 - [x] M4a: WiFi STA + status web server in pure Ruby (spinel->C->ESP32-C3)
 - [x] /led/toggle endpoint on the status server (M4b)
-- [x] M5: mDNS (spinel-esp32.local), NTP wall clock, GC tuning, socket-error
+- [x] M5: mDNS (spinel-mote.local), NTP wall clock, GC tuning, socket-error
       resilience (verified under RST storm, zero reboots)
 - [x] M6: OTA updates end-to-end — dual slots, streaming install with
       sequential erase, /ota/check|start|status|reboot, bootloader rollback

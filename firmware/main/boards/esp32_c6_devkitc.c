@@ -7,7 +7,7 @@
 static const int buttons[] = { 9 };
 int board_init(void) { return bc_buttons_init(buttons, 1); }
 const char *board_name(void) { return "ESP32-C6-DevKitC-1"; }
-const char *board_mdns_host(void) { return "spinel-esp32-c6"; }
+const char *board_mdns_host(void) { return "spinel-mote-c6"; }
 int board_led_init(void) { return bc_ws2812_init(8); }
 int board_led_set(int on) { return bc_ws2812_set(on); }
 int board_battery_mv(void) { return -1; }

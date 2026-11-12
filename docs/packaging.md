@@ -1,4 +1,4 @@
-# Packaging: making spinel-esp32 easy to pick up
+# Packaging: making spinel-mote easy to pick up
 
 This project has three audiences with very different patience for setup. The
 goal is to give each the shortest path to running code, without pretending the
@@ -62,7 +62,7 @@ container with the toolchain baked in:
 
 ```bash
 docker run --rm -it --device=/dev/ttyUSB0 -v "$PWD:/w" -w /w \
-  ghcr.io/tomash/spinel-esp32 make flash APP=app/blink.rb
+  ghcr.io/tomash/spinel-mote make flash APP=app/blink.rb
 ```
 
 Base it on `espressif/idf:release-v5.5` (the image IDF itself publishes), and

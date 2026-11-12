@@ -1,8 +1,8 @@
 # M6: OTA Firmware Updates — Implementation Plan
 
 > **For the implementing agent**: this plan assumes the repo state at commit `c931edc` (M5).
-> Read `README.md` and `docs/findings.md` first. Working dir is `~/spinel-esp32`.
-> **Never build inside `~/clacky_workspace`** (pCloud FUSE strips exec bits) — build in `~/spinel-esp32`.
+> Read `README.md` and `docs/findings.md` first. Working dir is `~/spinel-mote`.
+> **Never build inside `~/clacky_workspace`** (pCloud FUSE strips exec bits) — build in `~/spinel-mote`.
 
 ## Goal
 
@@ -27,7 +27,7 @@ no USB cable is ever needed again — iterate on Ruby over the air.
   possible**, must change.
 - App size at M5: ~1.09 MB.
 - `esp-tls` / `mbedtls` already linked (mdns dependency, M5).
-- mDNS + SNTP work (M5): device is `spinel-esp32.local`, has wall clock.
+- mDNS + SNTP work (M5): device is `spinel-mote.local`, has wall clock.
 - Heap under burst load descends close to zero before emergency GC fires
   (148 B observed during M5 soak). **OTA streaming is burst load** — see GC notes below.
 - Flash chip: 4 MB.
@@ -119,7 +119,7 @@ explicit GC every N chunks (`GC.start` if spinel exposes it — check vendor/spi
 1. Serial reflash with new table; boot into `ota_0`; credentials + mDNS still work.
 2. `python3 -m http.server` on LAN; trigger `/ota/start` with the current image
    (same binary) → expect full write + `ota_end` ok + `/ota/status` "pending".
-3. `/ota/reboot` → device comes back on `spinel-esp32.local` (mDNS), serves status page.
+3. `/ota/reboot` → device comes back on `spinel-mote.local` (mDNS), serves status page.
 4. **Reboot-loop soak**: run `/ota/start` → `/ota/reboot` three times in a row; device
    must stay reachable. Watch for rollback-loop (means mark-valid logic is broken).
 5. **Bad image test**: truncated image → `ota_end(abort)` path → device stays on old

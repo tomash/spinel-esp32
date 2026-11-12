@@ -56,7 +56,7 @@ LED_PIN  = 3
 DIVIDER  = 2 # 100k/100k divider: cell = 2x pin voltage
 
 # Board identity drives the page header and the mDNS hostname: two boards
-# on one LAN must not both claim spinel-esp32.local (mDNS is first-come:
+# on one LAN must not both claim spinel-mote.local (mDNS is first-come:
 # the second board to start either loses the name or knocks the first off
 # it, depending on the responder). T-OI Plus keeps the plain name; the
 # T-Display gets an explicit -tdisplay suffix.
@@ -66,9 +66,9 @@ end
 
 def mdns_host
   if board_name.include?("T-Display")
-    "spinel-esp32-tdisplay"
+    "spinel-mote-tdisplay"
   else
-    "spinel-esp32"
+    "spinel-mote"
   end
 end
 
@@ -376,7 +376,7 @@ module ESP32
   # knows which chip it was compiled for (same CONFIG_IDF_TARGET_ESP32
   # guard as the ADC block above). The name goes on the status page and in
   # the mDNS hostname, so a T-OI Plus and a T-Display on one LAN announce
-  # distinct hosts instead of fighting over spinel-esp32.local.
+  # distinct hosts instead of fighting over spinel-mote.local.
   ffi_source <<~C
     const char *esp32_board_name(void) {
     #if CONFIG_IDF_TARGET_ESP32
@@ -543,9 +543,9 @@ def status_page(ssid, rssi, chan, ip, led, cell_v, time_s, slot_s, ota)
   rssi_s = rssi.nil? ? "?" : "#{rssi}"
   ot = ota ? "#{ota["phase"]} (#{ota["progress"]} bytes)" : "no attempt this boot"
   <<~HTML
-    <!doctype html><html><head><title>spinel-esp32</title></head>
+    <!doctype html><html><head><title>spinel-mote</title></head>
     <body style="font-family:monospace;background:#111;color:#eee;padding:2em">
-    <h1>#{board_name} / spinel-esp32</h1>
+    <h1>#{board_name} / spinel-mote</h1>
     <table>
     <tr><td>LED (GPIO#{LED_PIN})</td><td>#{led_s}</td></tr>
     <tr><td>Battery cell</td><td>#{cell_v} V</td></tr>
@@ -708,7 +708,7 @@ def ota_download(host, port, path, force: false)
     # loop aborts when no byte has arrived for idle_ms. The old
     # slot keeps running on abort.
     sock.write "GET #{path} HTTP/1.0\r\nHost: #{host}:#{port}\r\n" \
-               "User-Agent: spinel-esp32-ota/1\r\nAccept: */*\r\n\r\n"
+               "User-Agent: spinel-mote-ota/1\r\nAccept: */*\r\n\r\n"
     last_rx = ESP32.esp32_millis
     # ---- headers: non-blocking poll until \r\n\r\n, bounded ----
     hdr = ""

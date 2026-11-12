@@ -21,7 +21,7 @@ cmake_minimum_required(VERSION 3.16)
 set(PROJECT_VER "0.7.0")
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/spinel_target.cmake)
-project(spinel_esp32_app C CXX ASM)
+project(spinel_mote_app C CXX ASM)
 
 # Prebuilt spinel RT (built by tools/build-rt.sh; SP_NO_SIGNALS): a plain
 # imported static library; the app's link line adds it after main. The

@@ -19,7 +19,7 @@
 int board_init(void);
 
 /* Human-readable board name ("T-OI Plus (ESP32-C3)") and the mDNS host name
- * a networked app should claim ("spinel-esp32"; distinct per board so two
+ * a networked app should claim ("spinel-mote"; distinct per board so two
  * boards on one LAN do not fight over a name). */
 const char *board_name(void);
 const char *board_mdns_host(void);

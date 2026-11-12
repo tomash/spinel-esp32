@@ -1,6 +1,6 @@
-# spinel-esp32
+# spinel-mote
 
-**Ruby → native ESP32 firmware, via [matz/spinel](https://github.com/matz/spinel).**
+**Ruby → native microcontroller firmware, via [matz/spinel](https://github.com/matz/spinel).** A tiny build target for mainline Spinel; ESP32 first, more chips to follow.
 
 No interpreter on target. No Python *on target*. No mruby, no picoruby, no mruby-esp32.
 Spinel compiles whole Ruby programs through whole-program type inference to plain C,
@@ -28,8 +28,8 @@ LilyGO T-OI Plus (ESP32-C3, RV32IMAC), verified over serial and over the network
 ## Quick start
 
 ```bash
-git clone https://github.com/tomash/spinel-esp32.git
-cd spinel-esp32
+git clone https://github.com/tomash/spinel-mote.git
+cd spinel-mote
 make setup        # submodule + host spinel + cross runtime (one time)
 make flash APP=app/blink.rb     # Ruby -> C -> idf.py build -> flash -> serial log
 ```
@@ -68,8 +68,8 @@ macOS: `xcode-select --install` covers the C toolchain; brew install ruby, wget.
 ### 2. Build the vendored spinel compiler
 
 ```bash
-git clone https://github.com/tomash/spinel-esp32.git
-cd spinel-esp32
+git clone https://github.com/tomash/spinel-mote.git
+cd spinel-mote
 git submodule update --init --recursive   # vendor/spinel at the pinned commit
 make -C vendor/spinel deps                # prism v1.9.0 + rbs from rubygems (into vendor/)
 make -C vendor/spinel                     # builds bin/spinel + friends
@@ -190,10 +190,10 @@ new app image over the LAN and point the board at it:
 
 ```bash
 tools/build-app.sh app/wifi_status.rb --target=esp32 --build   # rebuilds firmware
-mkdir -p /tmp/pub && cp firmware/build/spinel_esp32_app.bin /tmp/pub/spinel.bin
+mkdir -p /tmp/pub && cp firmware/build/spinel_mote_app.bin /tmp/pub/spinel.bin
 cd /tmp/pub && python3 -m http.server 8000 &
 
-curl http://spinel-esp32.local/ota/status               # slots + versions
+curl http://spinel-mote.local/ota/status               # slots + versions
 curl "http://<board>/ota/start?url=<host-ip>:8000/spinel.bin&force=1"
 curl http://<board>/ota/reboot
 ```
@@ -297,10 +297,10 @@ Details:
 - **`wifi_status.rb` (M5 additions)** — the app also grows the LAN-facing
   niceties and the survival kit:
 
-  - **mDNS** — `spinel-esp32.local` announced over `_http._tcp` via the
+  - **mDNS** — `spinel-mote.local` announced over `_http._tcp` via the
     `espressif/mdns` managed component (FFI: `mdns_init`,
     `mdns_hostname_set`, `mdns_instance_name_set`, `mdns_service_add`).
-    `curl http://spinel-esp32.local/` just works from the LAN.
+    `curl http://spinel-mote.local/` just works from the LAN.
   - **NTP** — wall clock on the status page via SNTP (`esp_sntp_setoperatingmode`
     … `esp_sntp_init`, querying `pool.ntp.org`). See the *gotcha* below —
     `sntp_get_sync_status()` is a one-shot latch in IDF.
@@ -418,7 +418,7 @@ See `docs/plan.md`. M0–M6 complete: host pipeline, cross runtime, hardware dem
 (GPIO/ADC/I2C), WiFi STA + web server in pure Ruby — all verified on the
 T-OI Plus, including the `/led/toggle` endpoint over the LAN and calibrated
 battery voltage matching the multimeter. M5 adds mDNS
-(`http://spinel-esp32.local/`), NTP wall-clock on the status page, GC
+(`http://spinel-mote.local/`), NTP wall-clock on the status page, GC
 thresholds tuned for the C3's 16 KB DRAM heap, and socket-error resilience —
 verified under an RST storm with zero reboots.
 

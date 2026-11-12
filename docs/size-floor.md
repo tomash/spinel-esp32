@@ -172,7 +172,7 @@ the `size-floor-switches` tree, flashed over `/dev/ttyUSB0`:
 
 - **blink.rb**: 10 blinks in the expected 4 s, `main()` returned 0.
 - **wifi_status.rb**: associates, gets its IP, serves `/`, `/led/toggle`,
-  `/ota/status`; mDNS (`spinel-esp32.local`) resolves.
+  `/ota/status`; mDNS (`spinel-mote.local`) resolves.
   - **RST storm**: two rounds of 300 connections closed with `SO_LINGER=0`
     (half before sending a request): 103 `accept error: ECONNABORTED` lines
     logged and rescued, zero panics, 40/40 normal GETs OK afterwards. Heap
