@@ -27,9 +27,7 @@ time, kept if it pays and does not change behaviour the program can see.
 
 0. **mruby/c baseline.** Link mruby/c's VM bare-metal with the same
    toolchain and flags (`baremetal/mrubyc/`) so "how big is mruby/c" is a
-   measured number, not a README one. Blocked for now: building it runs its
-   table generators (Ruby scripts from the cloned repo), which needs the
-   user's go-ahead.
+   measured number, not a README one. Done, see Results.
 1. **Compiler flags.** `-msave-restore` (shared RISC-V prologue/epilogue
    routines) and LTO across the app and runtime. Cheap, no source changes.
 2. **Tiny printf and output path.** Replace newlib's stdio for the
@@ -65,6 +63,34 @@ rest of the 20 KB).
 | 2 tiny stdio + no file system (on 1a) | 40 352 | 56 896 | 14 080 |
 | 1b LTO again (on 2) | 48 256 | 59 328 | 12 008 |
 | 4a `SP_NO_SLAB` (on 2) | **27 452** | **43 840** | **11 276** |
+
+### 0. mruby/c baseline (measured)
+
+mruby/c at `5bb8ae6`, all of `src/*.c` with its generated tables, linked
+bare-metal with the same toolchain, flags (`-Os -msave-restore`,
+gc-sections) and newlib-nano, driven by `baremetal/mrubyc/main.c` (no
+scheduler, one C method, a 512-byte bytecode buffer, an 8 KB memory pool):
+
+| build | flash | static RAM | of which the pool |
+|---|---:|---:|---:|
+| default (`MRBC_USE_FLOAT=2`: doubles) | 93 296 | 11 688 | 8 192 |
+| `MRBC_USE_FLOAT=0` | 72 544 | 11 636 | 8 192 |
+
+Largest pieces (no float): VM 14.5 KB, allocator 8.9 KB, Array 5.6 KB,
+String 5.5 KB, symbols 4.9 KB, the Ruby-written builtins (`mrblib`) 4.9 KB,
+Object 4.8 KB, the scheduler 4.2 KB, console 3.8 KB, class 3.3 KB, Hash
+2.8 KB, task queue 1.7 KB.
+
+What this says:
+
+- mruby/c's footprint is fixed: it links every builtin class and method,
+  because the bytecode can call any of them. The 40 KB on its README is
+  RAM. Its flash is ~72 KB before trimming classes out by hand.
+- spinel links only what the program uses: blink.rb is 42.8 KB with
+  `SP_NO_SLAB`, and grows with the program, where mruby/c grows by bytes
+  of bytecode.
+- mruby/c's own static RAM is about 3.6 KB (the pool is the heap, sized by
+  the application). spinel's is 11 KB before its heap: that is lever 3.
 
 ### 1. Compiler flags
 
