@@ -37,20 +37,20 @@ int net_sntp_synced(void);
 int net_time_utc(char *buf, int cap);
 
 /* Task delay and a free-running millisecond clock (wraps after ~49 days). */
-int sys_delay_ms(int ms);
-int sys_millis(void);
+int mote_delay_ms(int ms);
+int mote_millis(void);
 
 /* Heap budget shared by the runtime and the network stack: free bytes now,
  * the lowest free seen, and the largest single block malloc can return. */
-int sys_heap_free(void);
-int sys_heap_min_free(void);
-int sys_heap_largest_block(void);
+int mote_heap_free(void);
+int mote_heap_min_free(void);
+int mote_heap_largest_block(void);
 
-/* GC pacing for a long-running networked app: sys_gc_tune aims the
- * runtime's churn triggers at the part's RAM, sys_gc_step runs a full
+/* GC pacing for a long-running networked app: mote_gc_tune aims the
+ * runtime's churn triggers at the part's RAM, mote_gc_step runs a full
  * collection plus string sweep (call it once per heartbeat). */
-int sys_gc_tune(void);
-int sys_gc_step(void);
+int mote_gc_tune(void);
+int mote_gc_step(void);
 
 /* Over-the-air update of the running image (ESP-IDF's two-slot OTA). On a
  * platform without it every call answers -1 and the name is "none". */

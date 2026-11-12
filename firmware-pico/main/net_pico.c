@@ -193,14 +193,14 @@ int net_time_utc(char *buf, int cap)
 }
 
 /* ---- system ------------------------------------------------------------------ */
-int sys_delay_ms(int ms)
+int mote_delay_ms(int ms)
 {
     TickType_t t = pdMS_TO_TICKS((uint32_t)ms);
     vTaskDelay(t ? t : 1);
     return 0;
 }
 
-int sys_millis(void) { return (int)to_ms_since_boot(get_absolute_time()); }
+int mote_millis(void) { return (int)to_ms_since_boot(get_absolute_time()); }
 
 /* The heap is newlib's, from the end of .bss (__end__) to __HeapLimit; the
  * part above the current break has never been handed out, so it is one
@@ -215,16 +215,16 @@ static int heap_free_now(void)
     return (int)(&__HeapLimit - brk) + (int)mi.fordblks;
 }
 
-int sys_heap_free(void)
+int mote_heap_free(void)
 {
     int f = heap_free_now();
     if (s_heap_min < 0 || f < s_heap_min) s_heap_min = f;
     return f;
 }
 
-int sys_heap_min_free(void) { sys_heap_free(); return s_heap_min; }
+int mote_heap_min_free(void) { mote_heap_free(); return s_heap_min; }
 
-int sys_heap_largest_block(void)
+int mote_heap_largest_block(void)
 {
     /* a lower bound: the untouched region above the break */
     return (int)(&__HeapLimit - (char *)sbrk(0));
@@ -235,7 +235,7 @@ int sys_heap_largest_block(void)
 extern size_t sp_gc_threshold, sp_gc_threshold_init;
 extern size_t sp_str_threshold, sp_str_threshold_init;
 extern size_t sp_str_old_threshold, sp_str_old_threshold_init;
-int sys_gc_tune(void)
+int mote_gc_tune(void)
 {
     sp_gc_threshold      = 64 * 1024; sp_gc_threshold_init      = 64 * 1024;
     sp_str_threshold     = 32 * 1024; sp_str_threshold_init     = 32 * 1024;
@@ -245,7 +245,7 @@ int sys_gc_tune(void)
 
 void sp_gc_collect_request(void);
 void sp_str_sweep(void);
-int sys_gc_step(void)
+int mote_gc_step(void)
 {
     sp_gc_collect_request();
     sp_str_sweep();

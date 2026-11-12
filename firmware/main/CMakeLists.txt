@@ -15,7 +15,7 @@ if(IDF_TARGET STREQUAL "esp32c6")
 endif()
 
 idf_component_register(
-    SRCS "sp_app_adapter.c" "sp_lwip_compat.c" "sp_ota_adapter.c" "tdisplay.c" "rt_tasks.c" "app.c"
+    SRCS "sp_app_adapter.c" "sp_lwip_compat.c" "sp_ota_adapter.c" "net_esp.c" "tdisplay.c" "rt_tasks.c" "app.c"
          "boards/board_common.c" "boards/imu.c" "boards/ir.c" "boards/audio.c" "boards/${SPINEL_BOARD}.c"
     INCLUDE_DIRS "." "boards" "../../shim/esp32/include" "${SPINEL_SRC_DIR}/lib" "${SPINEL_SRC_DIR}/lib/regexp"
     # M4: esp_wifi STA + nvs + netif + event loop + adc driver. The

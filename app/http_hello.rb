@@ -11,21 +11,21 @@ module Net
   ffi_func :net_wifi_connect,   [], :int
   ffi_func :net_wifi_connected, [], :int
   ffi_func :net_wifi_ip,        [:ptr, :int], :int
-  ffi_func :sys_millis,         [], :int
+  ffi_func :mote_millis,         [], :int
 end
 
 puts "http_hello on #{Net.board_name}: joining #{Net.net_wifi_ssid}"
 rc = Net.net_wifi_init
 puts "wifi init: #{rc}"
 Net.net_wifi_connect
-t0 = Net.sys_millis
+t0 = Net.mote_millis
 while Net.net_wifi_connected == 0
   sleep 0.25
 end
 ip_buf = "\0" * 32
 Net.net_wifi_ip(ip_buf, 32)
 ip = ip_buf.delete("\0")
-puts "connected in #{Net.sys_millis - t0} ms, ip #{ip}"
+puts "connected in #{Net.mote_millis - t0} ms, ip #{ip}"
 
 server = TCPServer.new("0.0.0.0", 80)
 puts "listening: http://#{ip}/"

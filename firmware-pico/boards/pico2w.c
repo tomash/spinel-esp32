@@ -92,3 +92,14 @@ int board_mic_level(int ms) { (void)ms; return -1; }
 int board_has_lcd(void) { return 0; }
 const board_display_t *board_display(void) { return 0; }
 int board_display_power(int on) { (void)on; return -1; }
+
+/* The T-Display panel driver's API (firmware/main/tdisplay.c on ESP), which
+ * apps such as wifi_status declare and call only when board_has_lcd() says
+ * so: no panel here. */
+int esp32_display_init(void) { return -1; }
+int esp32_display_set_orientation(int o) { (void)o; return -1; }
+int esp32_display_width(void) { return 0; }
+int esp32_display_height(void) { return 0; }
+int esp32_display_clear(int c) { (void)c; return -1; }
+int esp32_display_rect(int x, int y, int w, int h, int c, int fill) { (void)x; (void)y; (void)w; (void)h; (void)c; (void)fill; return -1; }
+int esp32_display_text(const char *s, int x, int y, int fg, int bg, int scale) { (void)s; (void)x; (void)y; (void)fg; (void)bg; (void)scale; return -1; }
