@@ -1,0 +1,10 @@
+# boards.local -- which board sits where on this machine (gitignored; copy
+# from boards.local.example). One line per board:
+#   <board> <idf target> <serial port> [flash baud]
+# Ports: prefer /dev/serial/by-path/... (stable per physical USB port; CH340
+# boards carry no USB serial number, so by-id names collide).
+t_oi_plus        esp32c3 /dev/serial/by-path/pci-0000:00:15.0-usb-0:3.4.4:1.0-port0
+esp32_c6_devkitc esp32c6 /dev/serial/by-path/pci-0000:00:15.0-usb-0:3.4.2:1.0-port0
+m5stickc         esp32   /dev/serial/by-path/pci-0000:00:15.0-usb-0:3.4.1:1.0-port0 115200
+m5sticks3        esp32s3 /dev/serial/by-path/pci-0000:00:15.0-usb-0:3.3:1.0
+m5stamp_c3       esp32c3 /dev/serial/by-path/pci-0000:00:15.0-usb-0:3.2:1.0

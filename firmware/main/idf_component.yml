@@ -1,2 +1,4 @@
 dependencies:
   espressif/mdns: "^1.0"
+  # WS2812 user LED on the M5Stamp C3 and the ESP32-C6-DevKitC (boards/board_common.c)
+  espressif/led_strip: "^3.0"

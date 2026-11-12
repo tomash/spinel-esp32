@@ -29,8 +29,6 @@ require "socket"
 # here -- spinel compiles it to a getenv() on the device, which has no
 # environment, so the fallback literal always won and ended up in app.c.
 PORT     = 80
-LED_PIN  = 3
-DIVIDER  = 2 # 100k/100k divider: cell = 2x pin voltage
 
 # Board identity drives the page header and the mDNS hostname: two boards
 # on one LAN must not both claim spinel-esp32.local (mDNS is first-come:
@@ -38,15 +36,11 @@ DIVIDER  = 2 # 100k/100k divider: cell = 2x pin voltage
 # it, depending on the responder). T-OI Plus keeps the plain name; the
 # T-Display gets an explicit -tdisplay suffix.
 def board_name
-  ESP32.esp32_board_name.delete("\0")
+  ESP32.board_name.delete("\0")
 end
 
 def mdns_host
-  if board_name.include?("T-Display")
-    "spinel-esp32-tdisplay"
-  else
-    "spinel-esp32"
-  end
+  ESP32.board_mdns_host.delete("\0")
 end
 
 module ESP32
@@ -55,8 +49,6 @@ module ESP32
     #include "esp_event.h"
     #include "esp_netif.h"
     #include "nvs_flash.h"
-    #include "esp_adc/adc_oneshot.h"
-    #include "esp_adc/adc_cali.h"
     #include "mdns.h"
     #include "esp_sntp.h"
     #include "esp_heap_caps.h"
@@ -64,70 +56,6 @@ module ESP32
     #include "string.h"
     #include "stdint.h"
     #include "errno.h"
-
-    /* ---- battery ADC. Channel and calibration scheme differ per target:
-       - ESP32-C3: GPIO2 = ADC1_CH2 (NOT CH0; CH0 is GPIO0, a floating Grove
-         pin -- the M4 under-read bug: CH0 drifted ~1.1-1.3V while the real
-         divider output sat on CH2). Calibrated by the per-chip eFuse
-         curve-fitting scheme.
-       - Classic ESP32 (T-Display): battery divider is GPIO34 = ADC1_CH6
-         (soc/adc_channel.h ADC1_GPIO34_CHANNEL 6). Earlier builds used
-         ADC_CHANNEL_0 (GPIO36), which is NOT the battery node on this board
-         and read ~0 V -- the "NO BATTERY" symptom. GPIO34 has no internal
-         pull, and the chip has no curve-fitting scheme -- only line fitting
-         with a default reference. The Ruby-side pin constant is
-         board-specific; this C only needs to compile and read correctly on
-         both.
-       Divider 2:1 (100k/100k): cell = 2 x pin. ---- */
-    #if CONFIG_IDF_TARGET_ESP32
-      #define WS_ADC_CHANNEL ADC_CHANNEL_6   /* GPIO34, ADC1_CH6 */
-    #else
-      #define WS_ADC_CHANNEL ADC_CHANNEL_2   /* GPIO2,  ADC1_CH2 */
-    #endif
-    static adc_oneshot_unit_handle_t ws_adc_unit = NULL;
-    static adc_cali_handle_t ws_adc_cali = NULL;
-    static int ws_adc_inited = 0;
-
-    int esp32_adc_init(void) {
-        if (ws_adc_inited) return 0;
-        adc_oneshot_unit_init_cfg_t unit = {
-            .unit_id = ADC_UNIT_1, .ulp_mode = ADC_ULP_MODE_DISABLE,
-        };
-        if (adc_oneshot_new_unit(&unit, &ws_adc_unit) != ESP_OK) return -1;
-        adc_oneshot_chan_cfg_t chan = {
-            .bitwidth = ADC_BITWIDTH_DEFAULT, .atten = ADC_ATTEN_DB_12,
-        };
-        if (adc_oneshot_config_channel(ws_adc_unit, WS_ADC_CHANNEL, &chan) != ESP_OK)
-            return -2;
-    #if CONFIG_IDF_TARGET_ESP32
-        adc_cali_line_fitting_config_t cc = {
-            .unit_id = ADC_UNIT_1,
-            .bitwidth = ADC_BITWIDTH_DEFAULT, .atten = ADC_ATTEN_DB_12,
-            .default_vref = 1100, /* mV; used only if eFuse VREF is unburnt */
-        };
-        adc_cali_create_scheme_line_fitting(&cc, &ws_adc_cali); /* optional */
-    #else
-        adc_cali_curve_fitting_config_t cc = {
-            .unit_id = ADC_UNIT_1, .chan = WS_ADC_CHANNEL,
-            .bitwidth = ADC_BITWIDTH_DEFAULT, .atten = ADC_ATTEN_DB_12,
-        };
-        adc_cali_create_scheme_curve_fitting(&cc, &ws_adc_cali); /* optional */
-    #endif
-        ws_adc_inited = 1;
-        return 0;
-    }
-
-    /* Calibrated battery pin voltage in mV, or negative on failure. */
-    int esp32_adc_read_mv(void) {
-        if (!ws_adc_inited) return -1;
-        int raw = -1;
-        if (adc_oneshot_read(ws_adc_unit, WS_ADC_CHANNEL, &raw) != ESP_OK) return -2;
-        if (ws_adc_cali) {
-            int mv = -1;
-            if (adc_cali_raw_to_voltage(ws_adc_cali, raw, &mv) == ESP_OK) return mv;
-        }
-        return -3; /* cali unavailable */
-    }
 
     /* ---- WiFi STA (esp_wifi; connect via event loop) ---- */
     static int ws_sta_got_ip = 0;
@@ -397,52 +325,14 @@ module ESP32
     int esp32_ota_reboot(void);
   C
 
-  # LED (kept for reuse across demos)
-  ffi_source <<~C
-    #include "driver/gpio.h"
-    int esp32_led_init(int pin) {
-        gpio_config_t cfg = {
-            .pin_bit_mask = 1ULL << pin,
-            .mode = GPIO_MODE_OUTPUT,
-            .pull_up_en = GPIO_PULLUP_DISABLE,
-            .pull_down_en = GPIO_PULLDOWN_DISABLE,
-            .intr_type = GPIO_INTR_DISABLE,
-        };
-        return gpio_config(&cfg);
-    }
-    int esp32_led_write(int pin, int level) {
-        return gpio_set_level(pin, level ? 1 : 0);
-    }
-  C
-
-  # Board identity: the RT archive is target-agnostic, but the app adapter
-  # knows which chip it was compiled for (same CONFIG_IDF_TARGET_ESP32
-  # guard as the ADC block above). The name goes on the status page and in
-  # the mDNS hostname, so a T-OI Plus and a T-Display on one LAN announce
-  # distinct hosts instead of fighting over spinel-esp32.local.
-  ffi_source <<~C
-    const char *esp32_board_name(void) {
-    #if CONFIG_IDF_TARGET_ESP32
-        return "TTGO T-Display";
-    #else
-        return "T-OI Plus (ESP32-C3)";
-    #endif
-    }
-    int esp32_board_has_lcd(void) {
-    #if CONFIG_IDF_TARGET_ESP32
-        return 1;   /* ST7789 panel, driver in firmware/main/tdisplay.c */
-    #else
-        return 0;
-    #endif
-    }
-  C
-
-  ffi_func :esp32_adc_init,     [], :int
-  ffi_func :esp32_adc_read_mv, [], :int
-  ffi_func :esp32_led_init,     [:int], :int
-  ffi_func :esp32_led_write,    [:int, :int], :int
-  ffi_func :esp32_board_name,   [], :str
-  ffi_func :esp32_board_has_lcd, [], :int
+  # Board layer (firmware/main/board.h): what the LED, the battery and the
+  # display are on this board, so this app runs unchanged on every board.
+  ffi_func :board_name,       [], :str
+  ffi_func :board_mdns_host,  [], :str
+  ffi_func :board_led_init,   [], :int
+  ffi_func :board_led_set,    [:int], :int
+  ffi_func :board_battery_mv, [], :int
+  ffi_func :board_has_lcd,    [], :int
   ffi_func :esp32_wifi_ssid,     [], :str
   ffi_func :esp32_wifi_init,     [], :int
   ffi_func :esp32_wifi_connect, [], :int
@@ -475,7 +365,7 @@ end
 # ---- T-Display ST7789 (driver: firmware/main/tdisplay.c) ----
 # Declared with the same FFI DSL. The C driver is only linked into the
 # classic-ESP32 (T-Display) build, so every screen helper below is gated
-# by esp32_board_has_lcd -- on the C3 the calls are never made.
+# by board_has_lcd -- on boards without a panel the calls are never made.
 module TDisplay
   ffi_func :esp32_display_init,  [], :int
   ffi_func :esp32_display_set_orientation, [:int], :int
@@ -486,11 +376,21 @@ module TDisplay
   ffi_func :esp32_display_text,  [:str, :int, :int, :int, :int, :int], :int
 end
 
-# Panel driven in landscape 240x135 (set_orientation(1) transposes the
-# MADCTL scan so x runs along the long glass edge -- the wide axis fits the
-# full URL/host lines without wrapping). Colors: RGB565.
-W = 240
-H = 135
+# Panel driven in landscape (set_orientation(1) transposes the MADCTL scan so
+# x runs along the long glass edge). Size comes from the driver after the
+# rotation: 240x135 on the T-Display and the M5StickS3, 160x80 on the
+# M5StickC, which gets the compact layout. Colors: RGB565.
+$w = 240
+$h = 135
+
+def lcd_small
+  $h < 100
+end
+
+# Title bar text: the board's name, cut to what fits at 6 px per glyph.
+def lcd_title
+  board_name.upcase[0, ($w / 6) - 2]
+end
 
 # Battery-present threshold. No pack wired to the divider reads ~0.0-0.3 V
 # (floating pin); a real single-cell LiPo sits well above 3 V. Below the
@@ -507,25 +407,35 @@ end
 $lcd_ok = false
 
 def lcd_boot
-  return false if ESP32.esp32_board_has_lcd == 0
+  return false if ESP32.board_has_lcd == 0
   rc = TDisplay.esp32_display_init
   if rc != 0
     puts "LCD: init failed (#{rc}) -- continuing headless"
     return false
   end
-  rc = TDisplay.esp32_display_set_orientation(1)   # landscape 240x135
+  rc = TDisplay.esp32_display_set_orientation(1)   # landscape
   if rc != 0
     puts "LCD: orientation set failed (#{rc}) -- continuing as-is"
     return false
   end
+  $w = TDisplay.esp32_display_width
+  $h = TDisplay.esp32_display_height
   TDisplay.esp32_display_clear(0x0000)
   true
 end
 
 def lcd_show_booting(ssid)
   return unless $lcd_ok
-  TDisplay.esp32_display_rect(0, 0, W, 28, 0x001F, 1)          # blue title bar
-  TDisplay.esp32_display_text("TTGO T-DISPLAY", 6, 9, 0xFFFF, 0x001F, 1)
+  if lcd_small
+    TDisplay.esp32_display_rect(0, 0, $w, 12, 0x001F, 1)
+    TDisplay.esp32_display_text(lcd_title, 3, 2, 0xFFFF, 0x001F, 1)
+    TDisplay.esp32_display_text("SPINEL", 3, 18, 0x07E0, 0x0000, 2)
+    TDisplay.esp32_display_text("WIFI: #{ssid[0, ($w / 6) - 7]}", 3, 46, 0xFFE0, 0x0000, 1)
+    TDisplay.esp32_display_text("CONNECTING...", 3, 60, 0xFFFF, 0x0000, 1)
+    return
+  end
+  TDisplay.esp32_display_rect(0, 0, $w, 28, 0x001F, 1)          # blue title bar
+  TDisplay.esp32_display_text(lcd_title, 6, 9, 0xFFFF, 0x001F, 1)
   TDisplay.esp32_display_text("SPINEL ESP32", 8, 44, 0x07E0, 0x0000, 2)
   TDisplay.esp32_display_text("WIFI: #{ssid[0, 32]}", 8, 84, 0xFFE0, 0x0000, 1)
   TDisplay.esp32_display_text("CONNECTING...", 8, 110, 0xFFFF, 0x0000, 1)
@@ -534,8 +444,17 @@ end
 def lcd_show_running(ip, host, cell_v)
   return unless $lcd_ok
   TDisplay.esp32_display_clear(0x0000)
-  TDisplay.esp32_display_rect(0, 0, W, 24, 0x001F, 1)          # blue title bar
-  TDisplay.esp32_display_text("TTGO T-DISPLAY", 6, 7, 0xFFFF, 0x001F, 1)
+  if lcd_small
+    # 160x80: title, the IP big enough to read, the .local name, battery
+    TDisplay.esp32_display_rect(0, 0, $w, 12, 0x001F, 1)
+    TDisplay.esp32_display_text(lcd_title, 3, 2, 0xFFFF, 0x001F, 1)
+    TDisplay.esp32_display_text(ip, 3, 18, 0x07E0, 0x0000, ip.size * 12 <= $w ? 2 : 1)
+    TDisplay.esp32_display_text("#{host}.local"[0, ($w / 6) - 1], 3, 44, 0x07E0, 0x0000, 1)
+    lcd_battery_line(cell_v)
+    return
+  end
+  TDisplay.esp32_display_rect(0, 0, $w, 24, 0x001F, 1)          # blue title bar
+  TDisplay.esp32_display_text(lcd_title, 6, 7, 0xFFFF, 0x001F, 1)
   # the one thing the screen exists for: the address to open
   TDisplay.esp32_display_text("HTTP://", 6, 34, 0x07E0, 0x0000, 1)
   # IP auto-sizes: scale 2 (12 px/char + spacing) fits up to 19 chars;
@@ -551,14 +470,15 @@ end
 
 def lcd_battery_line(cell_v)
   return unless $lcd_ok
-  TDisplay.esp32_display_rect(0, H - 12, W, 12, 0x0000, 1)     # wipe footer
-  TDisplay.esp32_display_text(batt_label(cell_v), 6, H - 12, 0xFFE0, 0x0000, 1)
+  TDisplay.esp32_display_rect(0, $h - 12, $w, 12, 0x0000, 1)     # wipe footer
+  TDisplay.esp32_display_text(batt_label(cell_v), lcd_small ? 3 : 6, $h - 12, 0xFFE0, 0x0000, 1)
 end
 
 def lcd_show_wifi_failed
   return unless $lcd_ok
-  TDisplay.esp32_display_text("WIFI: NO LINK", 6, 96, 0xF800, 0x0000, 1)
-  TDisplay.esp32_display_text("SERVING IP ONLY", 6, 112, 0xFFFF, 0x0000, 1)
+  y = lcd_small ? 46 : 96
+  TDisplay.esp32_display_text("WIFI: NO LINK", lcd_small ? 3 : 6, y, 0xF800, 0x0000, 1)
+  TDisplay.esp32_display_text("SERVING IP ONLY", lcd_small ? 3 : 6, y + 14, 0xFFFF, 0x0000, 1)
 end
 
 # ---- buffers for the out-param FFI calls (String allocated in Ruby) ----
@@ -583,8 +503,8 @@ def status_page(ssid, rssi, chan, ip, led, cell_v, time_s, slot_s, ota)
     <body style="font-family:monospace;background:#111;color:#eee;padding:2em">
     <h1>#{board_name} / spinel-esp32</h1>
     <table>
-    <tr><td>LED (GPIO#{LED_PIN})</td><td>#{led_s}</td></tr>
-    <tr><td>Battery cell</td><td>#{cell_v} V</td></tr>
+    <tr><td>LED</td><td>#{led_s}</td></tr>
+    <tr><td>Battery cell</td><td>#{cell_v.nil? ? "none" : "#{cell_v} V"}</td></tr>
     <tr><td>WiFi SSID</td><td>#{ssid}</td></tr>
     <tr><td>RSSI</td><td>#{rssi_s} dBm</td></tr>
     <tr><td>Channel</td><td>#{chan}</td></tr>
@@ -609,14 +529,13 @@ if $lcd_ok
   lcd_show_booting(SSID)
   puts "LCD: booted, splash up"
 end
-ESP32.esp32_led_init(LED_PIN)
-ESP32.esp32_led_write(LED_PIN, 1)
+ESP32.board_led_init
+ESP32.board_led_set(1)
 rc = ESP32.esp32_wifi_init()
 if rc != 0
   puts "esp32_wifi_init failed: #{rc}"
   abort "wifi init failed"
 end
-ESP32.esp32_adc_init()
 puts "Scanning (2.4G) ..."
 n = ESP32.esp32_wifi_scan()
 puts "Scan found #{n} networks"
@@ -653,8 +572,8 @@ puts "Serving status on 0.0.0.0:#{PORT} (polling loop, no threads)"
 if ESP32.esp32_wifi_connected != 0
   ESP32.esp32_wifi_ip(ip_buf, 48)
   show_ip = ip_buf.delete("\0").strip
-  mv = ESP32.esp32_adc_read_mv()
-  cell0 = mv >= 0 ? ((mv * DIVIDER) / 1000.0).round(2) : 0.0
+  mv = ESP32.board_battery_mv
+  cell0 = mv >= 0 ? (mv / 1000.0).round(2) : nil
   lcd_show_running(show_ip, mdns_host, cell0)
   puts "LCD: running screen (#{show_ip} / #{mdns_host}.local)"
 end
@@ -780,6 +699,7 @@ def ota_download(host, port, path, force: false)
     end
     # ---- body: 4 KB non-blocking reads straight into ota_write ----
     first = true
+    chunks = 0
     while true
       if first && !rest.empty?
         # body bytes that arrived with the final header chunk
@@ -840,6 +760,13 @@ def ota_download(host, port, path, force: false)
       rc = ESP32.esp32_ota_write(buf, got)
       raise "ota_write failed (#{rc})" if rc != 0
       written += got
+      # GC checkpoint every 8 chunks (~32 KB): each read_nonblock answers a
+      # fresh 4 KB String, and on spinel master (one String representation,
+      # payloads in the object heap) the churn trigger alone let them pile
+      # up past the free heap at the default preset -- NoMemoryError in
+      # read_nonblock right after ota_begin, with ~50 KB free at idle.
+      chunks += 1
+      ESP32.esp32_gc_step() if (chunks % 8) == 0
       break if total && written >= total
     end
     raise "truncated: got #{written}, expected #{total}" if total && written < total
@@ -914,6 +841,11 @@ loop do
 
     # -- route: GET /led/toggle flips the LED; anything else serves index --
     path = req.split(" ")[1].to_s
+    if path.start_with?("/led/toggle")
+      led = led == 1 ? 0 : 1
+      ESP32.board_led_set(led)
+      puts "[#{loop_count}] LED toggled -> #{led}"
+    end
 
     # -- M6: serve-path GC checkpoint #1 (after request read) --
     # The serve burst allocates ~4-5 KB (request parse + status strings +
@@ -1001,8 +933,8 @@ loop do
       next
     end
 
-    mv = ESP32.esp32_adc_read_mv()
-    cell_v = mv >= 0 ? ((mv * DIVIDER) / 1000.0).round(2) : 0.0
+    mv = ESP32.board_battery_mv
+    cell_v = mv >= 0 ? (mv / 1000.0).round(2) : nil
     # -- M5b: wall time (once NTP has synced) on the page --
     time_s = "(not synced)"
     if ESP32.esp32_sntp_synced() != 0
@@ -1038,9 +970,9 @@ loop do
   # -- slow-poll housekeeping: log battery; LED no longer blinks -- the
   #     toggle endpoint owns it now (state lives in this process) --
   if (loop_count % 50) == 0
-    mv = ESP32.esp32_adc_read_mv()
+    mv = ESP32.board_battery_mv
     if mv >= 0
-      cell = ((mv * DIVIDER) / 1000.0).round(2)
+      cell = (mv / 1000.0).round(2)
       puts "[#{loop_count}] idle; cell #{cell}V " \
            "heap #{ESP32.esp32_heap_free()} (min #{ESP32.esp32_heap_min_free()}, " \
            "largest #{ESP32.esp32_heap_largest_block()})"

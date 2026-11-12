@@ -14,6 +14,7 @@
 
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
+#include "board.h"
 
 /* Not including spinel_rt.h: it has non-inline definitions, and the
  * generated app.c (same component) already compiles them once. Just
@@ -22,6 +23,9 @@ int main(int argc, char **argv);
 
 void app_main(void)
 {
+    /* board first: on PMIC-held boards (M5StickS3) this keeps the power on */
+    int brc = board_init();
+    ESP_LOGI("spinel", "board: %s (init %d)", board_name(), brc);
     /* The main task's core comes from CONFIG_ESP_MAIN_TASK_AFFINITY:
        core 0 by default; core 1 for apps whose sdkconfig override moves
        it (app/wifi_status_dualcore.sdkconfig.esp32). */

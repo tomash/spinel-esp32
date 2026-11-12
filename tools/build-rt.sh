@@ -13,6 +13,12 @@
 #   ESP_IDF=/path/to/esp-idf tools/build-rt.sh <target>
 #   tools/build-rt.sh --probe        # check the cross libc surface (riscv32)
 #   tools/build-rt.sh esp32 --probe  # check the xtensa cross libc surface
+#
+# Overrides (environment), for building against another spinel tree or a
+# trimmed variant without touching the default archive:
+#   SPINEL_SRC=/path/to/spinel   spinel source tree (default vendor/spinel)
+#   RT_SUFFIX=-small             output dir build/rt-<target><suffix>
+#   RT_DEFS="-DSP_NO_ALLOC_REPORT ..."  extra -D flags for every member
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 IDF="${ESP_IDF:-$HOME/esp/esp-idf-v5.5}"
@@ -30,12 +36,17 @@ done
 TARGET="${TARGET:-riscv32}"
 case "$TARGET" in
   riscv32) GCC_NAME="riscv32-esp-elf-gcc" ;;
+  # ESP32-C6 (and H2): RV32IMAC -- the C3's rv32imc plus atomics. Same
+  # compiler, its own archive so the objects carry the C6's arch attributes.
+  riscv32imac) GCC_NAME="riscv32-esp-elf-gcc" ;;
   # Chip-specific driver, NOT the generic xtensa-esp-elf-gcc: the generic
   # driver's default multilib is big-endian and the linker then rejects the
   # archive ("compiled for a big endian system"). The esp32 driver defaults
   # to the little-endian windowed ESP32 config.
   esp32)   GCC_NAME="xtensa-esp32-elf-gcc" ;;
-  *) echo "error: unknown target '$TARGET' (riscv32|esp32)" >&2; exit 1 ;;
+  # ESP32-S3: Xtensa LX7, its own chip-specific driver (same reason as esp32).
+  esp32s3) GCC_NAME="xtensa-esp32s3-elf-gcc" ;;
+  *) echo "error: unknown target '$TARGET' (riscv32|riscv32imac|esp32|esp32s3)" >&2; exit 1 ;;
 esac
 AR_NAME="${GCC_NAME%gcc}ar"   # riscv32-esp-elf-ar / xtensa-esp-elf-ar
 
@@ -108,17 +119,32 @@ fi
 #   sp_str_shape[SP_STR_SHAPE_MAX]           8192*8 ->  64 KB, now 512*8 =  4 KB
 # Overflow behavior is graceful (heap-allocated extension segments for
 # roots; counts saturate for remembered/pinned/stats), see sp_gc.h:62-101.
+# Not BSS but sized the same way: the GC mark work list is malloc'd as ONE
+# block of SP_GC_MARK_STACK_MAX pointers on first collection (sp_gc.c) and
+# realloc-doubled when it fills, so this is a starting size, not a cap.
+# The 64K default is 256 KB on a 32-bit part -- never satisfiable here, so
+# every collection retried the malloc, failed, and marked recursively on
+# the C stack (measured on the C3: one failed 262144-byte malloc per GC).
+#   sp_gc_mark_stack[SP_GC_MARK_STACK_MAX]  65536*4 -> 256 KB, now 256*4 = 1 KB
 # SP_GC_STACK_MAX MUST match the app TU build (both sides consult it for
-# sp_gc_roots[] and the SP_GC_ROOT bound) -- tools/build-app.sh --target=esp32
-# passes the same list via SPINEL_ESP32_CFLAGS.
+# sp_gc_roots[] and the SP_GC_ROOT bound) -- keep this list identical to
+# the one in firmware/main/CMakeLists.txt.
 SHIM="$ROOT/shim/esp32"
-VENDOR="$ROOT/vendor/spinel"
-OUT="$ROOT/build/rt-$TARGET"
+VENDOR="${SPINEL_SRC:-$ROOT/vendor/spinel}"
+OUT="$ROOT/build/rt-$TARGET${RT_SUFFIX:-}"
 mkdir -p "$OUT"
 
-SP_SZ="-DSP_GC_STACK_MAX=4096 -DSP_GC_REMEMBERED_MAX=1024 -DSP_GC_PINNED_MAX=1024 \
-  -DSP_ALLOC_STATS=512 -DSP_STR_SHAPE_MAX=512 \
-  -DSP_DYN_SYMS_MAX=256 -DSP_EXC_STACK_MAX=8 -DSP_CATCH_STACK_MAX=8"
+# The capacity macros come from presets/<SPINEL_PRESET>.defs (default:
+# presets/default.defs, the values above), shared with the firmware's CMake so
+# the archive and the app TU are built with the same sizes. A non-default
+# preset builds into build/rt-<target>-<preset> unless RT_SUFFIX says otherwise.
+PRESET="${SPINEL_PRESET:-default}"
+PRESET_FILE="$ROOT/presets/$PRESET.defs"
+[[ -f "$PRESET_FILE" ]] || { echo "error: no preset $PRESET_FILE" >&2; exit 1; }
+SP_SZ="$(grep -v '^[[:space:]]*\(#\|$\)' "$PRESET_FILE" | sed 's/^[[:space:]]*/-D/' | tr '\n' ' ')"
+if [[ "$PRESET" != default && -z "${RT_SUFFIX+x}" ]]; then
+  OUT="$ROOT/build/rt-$TARGET-$PRESET"; mkdir -p "$OUT"
+fi
 
 # Arch flags: riscv32 needs the exact C3 march/mabi; xtensa (windowed ABI,
 # soft-float defaults) must get NONE for core selection -- ESP32's windowed
@@ -129,7 +155,9 @@ SP_SZ="-DSP_GC_STACK_MAX=4096 -DSP_GC_REMEMBERED_MAX=1024 -DSP_GC_PINNED_MAX=102
 ARCH_FLAGS=""
 if [[ "$TARGET" == "riscv32" ]]; then
   ARCH_FLAGS="-march=rv32imc_zicsr_zifencei -mabi=ilp32"
-elif [[ "$TARGET" == "esp32" ]]; then
+elif [[ "$TARGET" == "riscv32imac" ]]; then
+  ARCH_FLAGS="-march=rv32imac_zicsr_zifencei -mabi=ilp32"
+elif [[ "$TARGET" == "esp32" || "$TARGET" == "esp32s3" ]]; then
   ARCH_FLAGS="-mlongcalls"
 fi
 
@@ -137,7 +165,9 @@ CFLAGS_RT="-O2 -ffunction-sections -fdata-sections -ffp-contract=off \
   -Wno-all \
   $ARCH_FLAGS \
   -I$SHIM/include -I$VENDOR/lib -I$VENDOR/lib/regexp -I$VENDOR/lib/regexp/shim \
-  -DSP_NO_SIGNALS -D__ESP32_SHIM__ $SP_SZ"
+  -DSP_NO_SIGNALS -D__ESP32_SHIM__ $SP_SZ ${RT_DEFS:-}"
+echo "VENDOR = $VENDOR"
+echo "OUT = $OUT  (preset $PRESET${RT_DEFS:+, RT_DEFS: $RT_DEFS})"
 
 # ---- the source list (upstream Makefile RT_MEMBERS in full: 32 members.
 # Nothing is skipped on ESP32 -- sp_net/sp_system/sp_process* compile fine
@@ -148,6 +178,18 @@ RT_MEMBERS="sp_bigint sp_crypto sp_pack sp_time sp_core sp_net sp_system sp_gc s
   sp_dtoa sp_marshal sp_format sp_string sp_inspect sp_poly_cold sp_array sp_str \
   sp_str_cold sp_str_crypt sp_hash sp_proc sp_exc sp_re sp_random sp_fiber sp_sched \
   sp_io sp_iobuffer sp_cold sp_process sp_process_status"
+# Follow the tree's own list when it has one: upstream adds members over time
+# (sp_enum_str), and a missing one only shows up as an undefined symbol at
+# firmware link time.
+_mk_members="$(sed -n 's/^RT_MEMBERS = //p' "$VENDOR/Makefile" 2>/dev/null || true)"
+[[ -n "$_mk_members" ]] && RT_MEMBERS="$_mk_members"
+# Representation flags the tree's Makefile forces onto its runtime build
+# (`override COPT += -DSP_ONE_STRING`): the generated C defines them itself,
+# so an archive built without them mismatches the program's String layout and
+# fails to link (sp_hash_key_from_bytes, sp_strelem_of).
+for _f in $(sed -n 's/^override COPT += *//p' "$VENDOR/Makefile" 2>/dev/null); do
+  case "$_f" in -D*) CFLAGS_RT="$CFLAGS_RT $_f"; echo "  + $_f (from $VENDOR/Makefile)" ;; esac
+done
 
 RE_SRC="re_compile.c re_exec.c re_utf8.c unicase.c re_spinel.c"
 
@@ -170,7 +212,7 @@ compile "$SHIM/src/sp_esp32_stub.c" "$OUT/sp_esp32_stub.o"
 # the ucontext symbols are not pulled from this archive. Skip it and warn; the
 # archive stays linkable for apps without Fiber.
 UCFILE="$SHIM/src/ucontext.S"
-[[ "$TARGET" == "esp32" ]] && UCFILE="$SHIM/src/ucontext_xtensa.S"
+[[ "$TARGET" == "esp32" || "$TARGET" == "esp32s3" ]] && UCFILE="$SHIM/src/ucontext_xtensa.S"
 if [[ -f "$UCFILE" ]]; then
   "$CC" $CFLAGS_RT -x assembler-with-cpp -c "$UCFILE" -o "$OUT/ucontext.o"
 else
