@@ -150,6 +150,9 @@ shim/esp32/include/ucontext.h    # unchanged (shared layout)
   `firmware-esp32/` dir if the CMake doesn't parametrize cleanly.
 - Key sdkconfig deltas from the C3 config:
   - `IDF_TARGET=esp32`
+  - *(Revisited in #10: core 0 stays the default, but `app/wifi_status_dualcore.rb` runs the
+    Ruby task on the APP core, core 1, via its own sdkconfig override, still as a single
+    task. See `docs/rt-tasks.md`.)*
   - **Dual-core**: keep D3 (single-task Ruby) — pin the Ruby task to **PRO_CPU (core 0)**
     (`CONFIG_ESP_TASK_MAIN_CORE` / `xTaskCreatePinnedToCore` in `sp_app_adapter.c` —
     check how the main task is spawned there; if it currently uses plain
@@ -181,7 +184,9 @@ shim/esp32/include/ucontext.h    # unchanged (shared layout)
 Once blink works, in order — each should be a rebuild + reflash + smoke test only:
 
 1. `hello.rb` → UART stdout (verify `puts` over the CP2104)
-2. `battery.rb` → ADC: **T-Display's battery ADC pin is GPIO36 (ADC1_CH0)**, not GPIO2
+2. *(Corrected in PR #9: the T-Display battery divider is on **GPIO34 = ADC1_CH6**;
+   GPIO36 reads ~0 V.)*
+   `battery.rb` → ADC: **T-Display's battery ADC pin is GPIO36 (ADC1_CH0)**, not GPIO2
    (C3). Divider differs (T-Display uses 2:1 too — verify against LilyGO's
    `T-display` battery docs) — this is a 2-line change in `battery.rb`.
 3. `wifi_status.rb` → WiFi: same SSID/PSK constants, same FFI, same lwip compat —
@@ -222,10 +227,13 @@ port inherits OTA for free (same `esp_ota_*` calls are target-agnostic).
 - CP2104 on `/dev/ttyUSB1` (T-Display) vs CH34x/C3 on `/dev/ttyUSB0` — always pass
   `--port` explicitly; ttyUSB order is not guaranteed across reboots.
 - GPIO2/ADC mapping differs per board — **check LilyGO T-Display docs, not the C3 docs**
-  (backlight=GPIO4, battery ADC=GPIO36, I2C for the ST7789 is on GPIO21/22).
+  (backlight=GPIO4, battery ADC=GPIO34 per PR #9 — GPIO36 as first written here was
+  wrong — I2C for the ST7789 is on GPIO21/22).
 - ST7789 display driver is explicitly **out of scope** for this milestone (separate
   later work) — do not start it even though the board tempts you with its screen.
 - Dual-core: keep D3 (single-task Ruby) — pin to core 0, don't get creative.
+  *(Revisited in #10: core 0 stays the default; `app/wifi_status_dualcore.rb` shows
+  single-task Ruby on core 1 plus pinned C tasks. See `docs/rt-tasks.md`.)*
 - Multi-line git commits via PTY will fail — write to `/tmp/*.sh` and bash it.
 - Serial monitor noise: `grep -a`.
 - `sdkconfig` is generated — edit `sdkconfig.defaults`, not `sdkconfig`, then reconfigure.

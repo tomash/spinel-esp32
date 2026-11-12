@@ -13,6 +13,7 @@
  */
 
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
 #include "board.h"
 
 /* Not including spinel_rt.h: it has non-inline definitions, and the
@@ -25,7 +26,11 @@ void app_main(void)
     /* board first: on PMIC-held boards (M5StickS3) this keeps the power on */
     int brc = board_init();
     ESP_LOGI("spinel", "board: %s (init %d)", board_name(), brc);
-    ESP_LOGI("spinel", "spinel app_main: calling generated main()");
+    /* The main task's core comes from CONFIG_ESP_MAIN_TASK_AFFINITY:
+       core 0 by default; core 1 for apps whose sdkconfig override moves
+       it (app/wifi_status_dualcore.sdkconfig.esp32). */
+    ESP_LOGI("spinel", "spinel app_main: calling generated main() on core %d",
+             xPortGetCoreID());
     /* argc=0/argv=NULL: no ARGV on target; spinel's TU only stashes them. */
     int rc = main(0, NULL);
     ESP_LOGI("spinel", "spinel app: main() returned %d", rc);

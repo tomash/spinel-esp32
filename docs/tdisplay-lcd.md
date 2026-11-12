@@ -6,10 +6,12 @@ ST7789 implementation shipped with the project's ESP-IDF v5.5.5; no
 third-party controller driver is vendored.
 
 The panel is drawn in **landscape 240×135** orientation:
-`esp32_display_set_orientation(1)` flips the MADCTL `MV` bit so the
-logical x axis runs along the long glass edge (and swaps the address-window
-offset to `(40, 52)`), while `esp32_display_width`/`_height` report the
-logical size. Landscape gives 40 usable characters per line at scale 1,
+`esp32_display_set_orientation(1)` sets MADCTL `MV|MX` (`0x60`, the
+known-good T-Display rotation 1) so the logical x axis runs along the long
+glass edge, and switches the address-window offset to `(40, 53)`. A bare
+`MV` transpose, as first shipped, rendered every glyph mirror-imaged
+(fixed in PR #9). `esp32_display_width`/`_height` report the logical
+size. Landscape gives 40 usable characters per line at scale 1,
 enough for the full `http://<host>.local` status line without wrapping.
 
 ## Ruby API
@@ -49,7 +51,7 @@ framebuffer.
 | Backlight (active high) | 4 |
 
 The panel is configured for RGB565 at 40 MHz, gap `(52, 40)` portrait /
-`(40, 52)` landscape, and color inversion. The gaps match common TTGO
+`(40, 53)` landscape (MADCTL `MV|MX`), and color inversion. The gaps match common TTGO
 T-Display ST7789V configurations; rotation, exact edge alignment, and color
 order should be confirmed visually on the particular board revision. If the
 picture is shifted, upside down, or colors are inverted, adjust
