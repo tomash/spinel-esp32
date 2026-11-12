@@ -79,3 +79,43 @@ static const board_display_t s_disp = {
 };
 const board_display_t *board_display(void) { return &s_disp; }
 int board_display_power(int on) { (void)on; return 0; }
+#include "imu.h"
+int board_imu_init(void) { return s_pmic_ok ? imu_init(IMU_BMI270, 0x68) : -1; }
+/* IR: LED on G46, receiver on G42 (M5Stack StickS3 pin map). M5Stack: IR
+   needs the PMIC's 5 V output on, and the speaker amplifier (PM1 GPIO3) off,
+   or its supply noise blocks reception. */
+void board_ir_pins(int *tx, int *rx) { *tx = 46; *rx = 42; }
+int board_ir_prepare(void) {
+    if (!s_pmic_ok) return -1;
+    pm1_bits(PM1_PWR_CFG, 1 << 3, 1);       /* BOOST_EN: 5 V out */
+    pm1_bits(PM1_GPIO_FUNC0, 1 << 3, 0);    /* GPIO3 (amp) as plain GPIO */
+    pm1_bits(PM1_GPIO_MODE, 1 << 3, 1);     /*   output */
+    pm1_bits(PM1_GPIO_DRV, 1 << 3, 0);      /*   push-pull */
+    pm1_bits(PM1_GPIO_OUT, 1 << 3, 0);      /*   low: amplifier off */
+    return 0;
+}
+/* Audio: ES8311 codec at 0x18 on the PMIC's bus; the speaker amplifier is
+   PM1 GPIO3 (high = on), switched only around a tone so it does not disturb
+   IR reception. On battery (no VIN), volume is held to 75 %. */
+#include "audio.h"
+static int pm1_on_usb(void) {
+    uint8_t src;
+    return bc_i2c_read(0x04, &src, 1) == 0 && (src & 0x03);   /* PWR_SRC: vin | vinout */
+}
+int board_speaker_tone(int freq_hz, int ms, int volume_pct) {
+    if (!s_pmic_ok || es8311_attach(0x18) != 0) return -1;
+    if (!pm1_on_usb() && volume_pct > 75) volume_pct = 75;
+    pm1_bits(PM1_GPIO_FUNC0, 1 << 3, 0);
+    pm1_bits(PM1_GPIO_MODE, 1 << 3, 1);
+    pm1_bits(PM1_GPIO_DRV, 1 << 3, 0);
+    pm1_bits(PM1_GPIO_OUT, 1 << 3, 1);      /* amplifier on (stays on until stop) */
+    return es8311_tone(freq_hz, ms, volume_pct);
+}
+int board_speaker_stop(void) {
+    es8311_stop();
+    return s_pmic_ok ? pm1_bits(PM1_GPIO_OUT, 1 << 3, 0) : -1;   /* amplifier off */
+}
+int board_mic_level(int ms) {
+    if (!s_pmic_ok || es8311_attach(0x18) != 0) return -1;
+    return es8311_mic_level(ms);
+}

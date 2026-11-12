@@ -16,7 +16,7 @@ endif()
 
 idf_component_register(
     SRCS "sp_app_adapter.c" "sp_lwip_compat.c" "sp_ota_adapter.c" "tdisplay.c" "app.c"
-         "boards/board_common.c" "boards/${SPINEL_BOARD}.c"
+         "boards/board_common.c" "boards/imu.c" "boards/ir.c" "boards/audio.c" "boards/${SPINEL_BOARD}.c"
     INCLUDE_DIRS "." "boards" "../../shim/esp32/include" "${SPINEL_SRC_DIR}/lib" "${SPINEL_SRC_DIR}/lib/regexp"
     # M4: esp_wifi STA + nvs + netif + event loop + adc driver. The
     # prebuilt RT archive cannot carry these; the app TU (FFI adapters)
@@ -26,7 +26,7 @@ idf_component_register(
     # M5a: mdns is the managed component espressif/mdns (idf_component.yml)
     # -- not in the IDF v5.5 component tree; the component manager fetches
     # it at configure time into build/managed_components.
-    REQUIRES esp_wifi nvs_flash esp_netif esp_event esp_adc esp_driver_gpio esp_driver_i2c esp_lcd lwip mdns app_update led_strip ${_spinel_extra_requires}
+    REQUIRES esp_wifi nvs_flash esp_netif esp_event esp_adc esp_driver_gpio esp_driver_i2c esp_driver_rmt esp_driver_i2s esp_lcd lwip mdns app_update led_strip ${_spinel_extra_requires}
 )
 
 # Link the prebuilt spinel RT after this component's objects. Imported

@@ -40,3 +40,10 @@ int board_display_power(int on) {
     en = on ? (en | 0x0C) : (en & ~0x0C);       /* bit2 LDO2, bit3 LDO3 */
     return bc_i2c_write8(0x12, en);
 }
+#include "imu.h"
+int board_imu_init(void) { return s_pmic_ok ? imu_init(IMU_MPU6886, 0x68) : -1; }
+/* IR: an IR LED on G9, no receiver */
+void board_ir_pins(int *tx, int *rx) { *tx = 9; *rx = -1; }
+/* Mic: SPM1423 PDM, clock G0, data G34 */
+#include "audio.h"
+int board_mic_level(int ms) { return pdm_mic_level(0, 34, ms); }
