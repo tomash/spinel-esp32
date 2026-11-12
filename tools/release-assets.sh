@@ -28,7 +28,7 @@ cd "$ROOT"
 PIN="$(tr -d '[:space:]' < SPINEL_PIN)"
 TAG="spinel-rt-$PIN"
 DIST="$ROOT/dist"
-REPO="$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || echo tomash/spinel-esp32)"
+REPO="$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || echo tomash/spinel-mote)"
 
 cmd="${1:-build}"
 shift || true

@@ -1,4 +1,4 @@
-# spinel-esp32 -- top-level entry point.
+# spinel-mote -- top-level entry point.
 #
 # Wraps the tools/ scripts so the common paths are one word. Everything still
 # works if you call tools/build-app.sh directly; this is a convenience layer.
@@ -78,7 +78,7 @@ monitor:
 	SPINEL_ESP_PORT=$(PORT) $(BUILD_APP) $(APP) --target=$(TARGET) --flash --monitor
 
 size:
-	@bin=firmware/build/spinel_esp32_app.bin; \
+	@bin=firmware/build/spinel_mote_app.bin; \
 	if [ -f "$$bin" ]; then ls -l "$$bin" | awk '{print $$5" bytes  "$$9}'; \
 	else echo "no image yet -- run 'make flash APP=...' first"; fi
 

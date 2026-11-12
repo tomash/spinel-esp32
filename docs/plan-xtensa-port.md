@@ -1,7 +1,7 @@
 # Xtensa Port (classic ESP32, LilyGO T-Display) — Implementation Plan
 
 > **For the implementing agent**: repo state at commit `c931edc` (M5) or later.
-> Working dir `~/spinel-esp32`. **Never build in `~/clacky_workspace`** (pCloud FUSE).
+> Working dir `~/spinel-mote`. **Never build in `~/clacky_workspace`** (pCloud FUSE).
 > The board on `/dev/ttyUSB1` (CP2104, mode 0666, verified present) is a
 > **LilyGO T-Display v1.1-classic: ESP32 Xtensa LX6 dual-core, 4 MB flash, no FPU used**.
 > First board (T-OI Plus, ESP32-C3, `/dev/ttyUSB0`) stays the lead target — nothing in
@@ -191,8 +191,8 @@ Once blink works, in order — each should be a rebuild + reflash + smoke test o
    `T-display` battery docs) — this is a 2-line change in `battery.rb`.
 3. `wifi_status.rb` → WiFi: same SSID/PSK constants, same FFI, same lwip compat —
    expect it to just work. mDNS name will **collide** with the C3 board on the same
-   LAN if both run simultaneously — parametrize the hostname (`spinel-esp32-tdisplay`
-   or `spinel-esp32-c3`) via an env/config constant per build.
+   LAN if both run simultaneously — parametrize the hostname (`spinel-mote-tdisplay`
+   or `spinel-mote-c3`) via an env/config constant per build.
 4. GC tuning: reuse `esp32_gc_tune` but **retune thresholds for the ESP32's larger
    DRAM** — start from the C3 values (sp_gc_threshold 8KB, sp_str_threshold 4KB,
    sp_str_old_threshold 8KB) and raise `sp_str_threshold` if soak shows headroom.

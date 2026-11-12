@@ -118,7 +118,7 @@ if [[ "$mode" == "--target=esp32" || $want_build -eq 1 || $want_flash -eq 1 || $
   # shellcheck disable=SC1090
   ( cd "$ROOT/firmware" && source "$IDF_EXPORT" >/dev/null 2>&1 \
       && idf.py "${idf_defs[@]}" build )
-  echo "==> image: $(ls -l "$ROOT/firmware/build/spinel_esp32_app.bin" | awk '{print $5" bytes"}')"
+  echo "==> image: $(ls -l "$ROOT/firmware/build/spinel_mote_app.bin" | awk '{print $5" bytes"}')"
   if [[ $want_flash -eq 0 && $want_monitor -eq 0 ]]; then
     exit 0
   fi

@@ -8,7 +8,7 @@
 static const int buttons[] = { 0, 35 };
 int board_init(void) { return bc_buttons_init(buttons, 2); }
 const char *board_name(void) { return "TTGO T-Display"; }
-const char *board_mdns_host(void) { return "spinel-esp32-tdisplay"; }
+const char *board_mdns_host(void) { return "spinel-mote-tdisplay"; }
 int board_led_init(void) { return bc_gpio_led_init(4, 0); }
 int board_led_set(int on) { return bc_gpio_led_set(on); }
 int board_battery_mv(void) { bc_adc_battery_init(ADC_CHANNEL_6, 2); return bc_adc_battery_mv(); }

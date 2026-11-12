@@ -74,7 +74,7 @@ for rb in "${apps[@]}"; do
       && IDF_TARGET="$TARGET" idf.py -B "$bdir" -D SDKCONFIG="$bdir/sdkconfig" \
            -D IDF_TARGET="$TARGET" build >"$ROOT/build/size/$rep.build.log" 2>&1 ) \
     || { echo "!! build failed, see build/size/$rep.build.log" >&2; continue; }
-  python3 - "$ROOT/firmware/$bdir/spinel_esp32_app.map" "$ROOT/firmware/$bdir/spinel_esp32_app.bin" \
+  python3 - "$ROOT/firmware/$bdir/spinel_mote_app.map" "$ROOT/firmware/$bdir/spinel_mote_app.bin" \
       > "$ROOT/build/size/$rep.txt" <<'PY'
 import os, re, sys, collections
 mapf, binf = sys.argv[1], sys.argv[2]

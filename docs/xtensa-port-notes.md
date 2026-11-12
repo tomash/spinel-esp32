@@ -13,7 +13,7 @@ wrong, and everything the next session needs to know.
 - vendor/spinel here is a plain shared clone pinned to 6b6f4602c with patches
   0030/0040 applied via `tools/apply-patches.sh` (stamp:
   `.spinel-esp32-patched`). The `spinel` host binary is a gitignored build
-  artifact; if missing, copy it from `~/spinel-esp32/vendor/spinel/spinel`.
+  artifact; if missing, copy it from `~/spinel-mote/vendor/spinel/spinel`.
 - Xtensa toolchain:
   `~/.espressif/tools/xtensa-esp-elf/esp-14.2.0_20260121/xtensa-esp-elf/bin/`
   (installed via `idf_tools.py --non-interactive install xtensa-esp-elf`).
@@ -108,8 +108,8 @@ shadowing. Verified no ucontext undefineds remain in the final link.
 - **No user LED on T-Display**: GPIO4 is the backlight enable; `blink_tdisplay.rb`
   blinks the display backlight instead (screen flashes, no LED).
 - **mDNS hostname collision**: both boards advertising the same hostname will
-  collide on Stage 5. Parametrize per board (e.g. `spinel-esp32-tdisplay`
-  vs `spinel-esp32-c3`) — decide whether from `SPINEL_ESP_PORT` env or
+  collide on Stage 5. Parametrize per board (e.g. `spinel-mote-tdisplay`
+  vs `spinel-mote-c3`) — decide whether from `SPINEL_ESP_PORT` env or
   IDF target.
 - **GC retune**: esp32-class chips have more DRAM than the C3; retune
   `SP_GC_STACK_MAX`/heap constants using `esp32_heap_free` telemetry once

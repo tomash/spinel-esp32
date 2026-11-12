@@ -1,10 +1,10 @@
 #!/bin/bash
-# tools/bootstrap.sh -- one-time setup for building spinel-esp32 firmware.
+# tools/bootstrap.sh -- one-time setup for building spinel-mote firmware.
 #
 # Turns "clone + README archaeology" into a single command:
 #
-#   git clone https://github.com/tomash/spinel-esp32.git
-#   cd spinel-esp32 && make setup
+#   git clone https://github.com/tomash/spinel-mote.git
+#   cd spinel-mote && make setup
 #
 # Steps (each skipped if already satisfied):
 #   1. vendor/spinel submodule at the pinned commit (SPINEL_PIN)
@@ -23,7 +23,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 PIN="$(tr -d '[:space:]' < SPINEL_PIN)"
-RT_BASE="${SPINEL_RT_BASE_URL:-https://github.com/tomash/spinel-esp32/releases/download/spinel-rt-$PIN}"
+RT_BASE="${SPINEL_RT_BASE_URL:-https://github.com/tomash/spinel-mote/releases/download/spinel-rt-$PIN}"
 SKIP_IDF="${SPINEL_SKIP_IDF:-0}"
 
 say() { printf '\n==> %s\n' "$*"; }

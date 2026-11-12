@@ -167,5 +167,5 @@ rather than writing N vendor ports.
 - **Testing.** Board count grows linearly with tiers; a HIL (hardware in
   the loop) setup with a powered hub and per-board `/dev/serial/by-id`
   paths will be needed by milestone 6 (ttyUSB ordering is already unstable).
-- **Naming.** "spinel-esp32" stops describing the repo after milestone 3.
-  Decide on a rename or a sibling repo before publishing non-ESP work.
+- **Naming.** Decided: the project is now `spinel-mote` (formerly
+  `spinel-esp32`), a build target for mainline Spinel; ESP32 is one target of several.
