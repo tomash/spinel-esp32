@@ -52,6 +52,7 @@ cp "$ROOT/build/$base.c" "$FW/main/app.c"
 # Variant settings are read at configure time: reconfigure every run (cheap).
 echo "==> cmake + ninja (firmware-pico)"
 cmake -S "$FW" -B "$BUILD" -G Ninja >/dev/null
+rm -f "$BUILD/spinel_mote_app.uf2" "$BUILD/spinel_mote_app.elf"
 ninja -C "$BUILD" -j "${JOBS:-2}" | grep -Ev '^\[[0-9]+/[0-9]+\] (Building|Linking)' || true
 [[ -f "$BUILD/spinel_mote_app.uf2" ]] || { echo "!! build failed" >&2; exit 1; }
 "$PICO_TOOLCHAIN_PATH/bin/riscv32-pico-elf-size" "$BUILD/spinel_mote_app.elf"

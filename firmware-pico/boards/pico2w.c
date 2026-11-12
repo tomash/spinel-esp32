@@ -12,6 +12,7 @@
  * Everything else on board.h (IMU, IR, audio, display) answers -1 / 0.
  */
 #include "board.h"
+#include "sp_pico.h"
 #include "pico/stdlib.h"
 #include "pico/cyw43_arch.h"
 #include "hardware/adc.h"
@@ -20,13 +21,7 @@
 #include "hardware/structs/ioqspi.h"
 #include "hardware/structs/sio.h"
 
-static int s_cyw43 = 0;   /* 0 not tried, 1 up, <0 init error */
-
-static int pico2w_cyw43_up(void)
-{
-    if (s_cyw43 == 0) s_cyw43 = cyw43_arch_init() == 0 ? 1 : -1;
-    return s_cyw43 == 1 ? 0 : -1;
-}
+#define pico2w_cyw43_up sp_pico_cyw43_up   /* net_pico.c: shared with WiFi */
 
 int board_init(void) { return 0; }
 const char *board_name(void) { return "Pico 2 W (RP2350, RISC-V)"; }
