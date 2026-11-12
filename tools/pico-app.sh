@@ -58,7 +58,7 @@ ninja -C "$BUILD" -j "${JOBS:-2}" | grep -Ev '^\[[0-9]+/[0-9]+\] (Building|Linki
 [[ $want_flash -eq 1 ]] || exit 0
 
 echo "==> picotool load (reboots a running app into BOOTSEL first)"
-"$PICOTOOL" load -f -x -v "$BUILD/spinel_mote_app.uf2"
+"$PICOTOOL" load -f -x -v "$BUILD/spinel_mote_app.uf2" 2>&1 | tr "\r" "\n" | grep -v "%\]"
 [[ $want_monitor -eq 1 ]] || exit 0
 
 port="${SPINEL_ESP_PORT:-}"

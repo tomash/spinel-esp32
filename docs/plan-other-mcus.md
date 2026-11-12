@@ -121,7 +121,7 @@ rather than writing N vendor ports.
 |---|---|---|---|
 | 1 | ✅ Measure footprint floor | none (ESP32-C3 build) | `docs/size-floor.md` |
 | 2 | ✅ Static-RAM diet preset: `presets/small.defs` + spinel `size-floor-switches`; runtime static RAM 11 KB (blink) / 32 KB (wifi_status); +67 KB free heap on the T-OI Plus; RST storm + OTA pass | T-OI Plus (C3) | blink + wifi_status run on silicon with ≤12 KB runtime static RAM (blink) |
-| 3 | Pico 2 W, RISC-V mode | Pico 2 W, Debug Probe | blink + hello over UART |
+| 3 | ✅ Pico 2 W, RISC-V mode: `firmware-pico/`, `tools/build-rt.sh rp2350-riscv`; hello, blink_board, board_info run (2026-11-12) | Pico 2 W | blink + hello over UART (USB CDC) |
 | 4 | Pico 2 W networking | Pico 2 W | wifi_status serving HTTP over CYW43/lwIP |
 | 5 | Cortex-M context switch | Pico 2 W (M33 mode), Nucleo-F411RE | Fiber test passes on M33 and M4F |
 | 6 | STM32 bring-up | Nucleo-F411RE, Nucleo-H743 | blink, I2C scan; size report for the F411 |

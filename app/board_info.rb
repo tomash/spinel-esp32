@@ -3,7 +3,8 @@
 # Prints what firmware/main/boards/<board>.c reports (name, mDNS host,
 # battery, buttons) and blinks the board's LED, whatever that LED is: a GPIO
 # LED, a WS2812 RGB pixel, the PMIC's LED or a backlight. The same file runs
-# on every board; build with SPINEL_BOARD=<board> (see firmware/spinel_target.cmake).
+# on every board, ESP32 or Pico (timing is Ruby's sleep); build with
+# SPINEL_BOARD=<board> (see firmware/spinel_target.cmake, firmware-pico/).
 
 module Board
   ffi_func :board_name,           [], :str
@@ -14,13 +15,6 @@ module Board
   ffi_func :board_button_count,   [], :int
   ffi_func :board_button_pressed, [:int], :int
   ffi_func :board_has_lcd,        [], :int
-
-  ffi_source <<~C
-    #include "freertos/FreeRTOS.h"
-    #include "freertos/task.h"
-    int board_delay_ms(int ms) { vTaskDelay(pdMS_TO_TICKS((uint32_t)ms)); return 0; }
-  C
-  ffi_func :board_delay_ms, [:int], :int, blocking: true
 end
 
 puts "board:   #{Board.board_name}"
@@ -44,9 +38,9 @@ else
   puts "led:     blinking 5 times"
   5.times do
     Board.board_led_set(1)
-    Board.board_delay_ms(250)
+    sleep 0.25
     Board.board_led_set(0)
-    Board.board_delay_ms(250)
+    sleep 0.25
   end
 end
 puts "board_info done"
