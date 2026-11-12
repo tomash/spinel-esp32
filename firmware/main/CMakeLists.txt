@@ -7,9 +7,17 @@
 # listed in REQUIRES. The shim headers shadow the POSIX surface newlib +
 # FreeRTOS do not provide.
 
+# 802.15.4 / Thread (app/thread_status.rb) only where the chip has the radio
+# and sdkconfig.defaults.<target> enables OpenThread.
+set(_spinel_extra_requires "")
+if(IDF_TARGET STREQUAL "esp32c6")
+    list(APPEND _spinel_extra_requires openthread vfs)
+endif()
+
 idf_component_register(
     SRCS "sp_app_adapter.c" "sp_lwip_compat.c" "sp_ota_adapter.c" "tdisplay.c" "app.c"
-    INCLUDE_DIRS "." "../../shim/esp32/include" "../../vendor/spinel/lib" "../../vendor/spinel/lib/regexp"
+         "boards/board_common.c" "boards/imu.c" "boards/ir.c" "boards/audio.c" "boards/${SPINEL_BOARD}.c"
+    INCLUDE_DIRS "." "boards" "../../shim/esp32/include" "${SPINEL_SRC_DIR}/lib" "${SPINEL_SRC_DIR}/lib/regexp"
     # M4: esp_wifi STA + nvs + netif + event loop + adc driver. The
     # prebuilt RT archive cannot carry these; the app TU (FFI adapters)
     # and the IDF link line resolve them here. (sp_lwip_compat.c is
@@ -18,7 +26,7 @@ idf_component_register(
     # M5a: mdns is the managed component espressif/mdns (idf_component.yml)
     # -- not in the IDF v5.5 component tree; the component manager fetches
     # it at configure time into build/managed_components.
-    REQUIRES esp_wifi nvs_flash esp_netif esp_event esp_adc esp_driver_gpio esp_lcd lwip mdns app_update
+    REQUIRES esp_wifi nvs_flash esp_netif esp_event esp_adc esp_driver_gpio esp_driver_i2c esp_driver_rmt esp_driver_i2s esp_lcd esp_timer lwip mdns app_update led_strip ${_spinel_extra_requires}
 )
 
 # Link the prebuilt spinel RT after this component's objects. Imported
@@ -55,6 +63,15 @@ foreach(_sym
     lwip_freeaddrinfo)
     target_link_options(${COMPONENT_LIB} PUBLIC "-Wl,-u,${_sym}")
 endforeach()
+# 3. Xtensa only (esp32, esp32s3): IDF links with --wrap=longjmp, so the RT's longjmp calls
+#    (exceptions: sp_raise_cls, sp_raise_stack_overflow) become
+#    __wrap_longjmp, which lives in libesp_rom.a (patches/esp_rom_longjmp.S),
+#    also early on the line. wifi_status happened to pull it in through
+#    another path; the T-Display demos did not, and failed to link on spinel
+#    master ("undefined reference to __wrap_longjmp").
+if(SPINEL_IDF_TARGET STREQUAL "esp32" OR SPINEL_IDF_TARGET STREQUAL "esp32s3")
+    target_link_options(${COMPONENT_LIB} PUBLIC "-Wl,-u,__wrap_longjmp")
+endif()
 # spinel's header-heavy style trips unused-function warnings; IDF compiles
 # with -Werror=all by default, and -Wno-error cannot undo -Werror=all once
 # expanded. The RT archive was built -Wno-all for the same reason; the
@@ -62,20 +79,14 @@ endforeach()
 # keeping IDF's strictness for IDF's own components.
 target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-unused-function -w)
 
-# Static-BSS capacity macros -- MUST match tools/build-rt.sh $SP_SZ exactly:
-# both sides declare sp_gc_roots[SP_GC_STACK_MAX] (sp_gc.h:81) and the app
-# TU's inline SP_GC_ROOT push/pop consults the same bound. A mismatch
-# corrupts the root stack. (0040 patch guards the rest.)
+# Static-BSS capacity macros come from presets/<SPINEL_PRESET>.defs
+# (spinel_target.cmake reads them into SPINEL_PRESET_DEFS), the same file
+# tools/build-rt.sh builds the archive with: both sides declare arrays such as
+# sp_gc_roots[SP_GC_STACK_MAX] (sp_gc.h) and the app TU's inline SP_GC_ROOT
+# push/pop consults the same bound, so a mismatch corrupts the root stack.
 target_compile_definitions(${COMPONENT_LIB} PRIVATE
-    SP_GC_STACK_MAX=4096
-    SP_GC_REMEMBERED_MAX=1024
-    SP_GC_PINNED_MAX=1024
-    SP_ALLOC_STATS=512
-    SP_STR_SHAPE_MAX=512
-    SP_DYN_SYMS_MAX=256
-    SP_GC_MARK_STACK_MAX=256
-    SP_EXC_STACK_MAX=8
-    SP_CATCH_STACK_MAX=8
+    ${SPINEL_PRESET_DEFS}
     SP_NO_SIGNALS
     __ESP32_SHIM__
-    SP_INT_OVERFLOW_MODE_RAISE)
+    SP_INT_OVERFLOW_MODE_RAISE
+    ${SPINEL_APP_DEFS})

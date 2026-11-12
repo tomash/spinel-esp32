@@ -1,5 +1,6 @@
 # build artifacts
 build/
+firmware/build-size-*/
 dist/
 *.o
 *.a
@@ -23,3 +24,4 @@ firmware/main/wifi_secrets.h
 # managed components are fetched by idf_component.yml at build time
 firmware/managed_components/
 firmware/dependencies.lock
+boards.local

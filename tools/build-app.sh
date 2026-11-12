@@ -13,9 +13,14 @@
 #   tools/build-app.sh app/hello.rb --target=esp32c3      # emit C (C3, same as esp32 today)
 #   tools/build-app.sh app/hello.rb --target=esp32 --flash    # + copy, idf.py build & flash
 #   tools/build-app.sh app/hello.rb --target=esp32 --flash --monitor  # + capture serial output
+#
+# Variants (environment, as tools/size-report.sh): SPINEL_SRC (spinel tree),
+# SPINEL_FLAGS (e.g. --no-bigint), SPINEL_PRESET (presets/<name>.defs; build
+# its archive first with SPINEL_PRESET=<name> tools/build-rt.sh). Switching
+# variants reconfigures firmware/build: run `idf.py fullclean` there first.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-SPINEL="$ROOT/vendor/spinel/spinel"
+SPINEL="${SPINEL_SRC:-$ROOT/vendor/spinel}/spinel"
 OUT="$ROOT/build"
 IDF_EXPORT="$HOME/esp/esp-idf-v5.5/export.sh"
 # Board targets: esp32c3 (T-OI Plus, /dev/ttyUSB0, default) and esp32
@@ -34,8 +39,8 @@ TARGET="esp32c3"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --emit-only)   mode="--emit-only" ;;
-    --target=esp32) mode="--target=esp32"; TARGET="esp32" ;;
-    --target=esp32c3) mode="--target=esp32"; TARGET="esp32c3" ;;
+    --target=esp32|--target=esp32c3|--target=esp32c6|--target=esp32s3)
+                   mode="--target=esp32"; TARGET="${1#--target=}" ;;
     --flash)       want_flash=1 ;;
     --monitor)     want_monitor=1; want_flash=1 ;;
     *) echo "build-app.sh: unknown arg $1" >&2; exit 2 ;;
@@ -53,6 +58,9 @@ case "$TARGET" in
   # xtensa-esp-elf-gcc: the generic driver's default multilib is big-endian,
   # which mismatches IDF's esp32 config (linker rejects the archive).
   esp32)    XGCC="$HOME/.espressif/tools/xtensa-esp-elf/esp-14.2.0_20260121/xtensa-esp-elf/bin/xtensa-esp32-elf-gcc" ;;
+  # C6 shares the C3's compiler (spinel only probes it for the pointer width).
+  esp32c6)  XGCC="$HOME/.espressif/tools/riscv32-esp-elf/esp-14.2.0_20260121/riscv32-esp-elf/bin/riscv32-esp-elf-gcc" ;;
+  esp32s3)  XGCC="$HOME/.espressif/tools/xtensa-esp-elf/esp-14.2.0_20260121/xtensa-esp-elf/bin/xtensa-esp32s3-elf-gcc" ;;
 esac
 
 echo "==> spinel C generation: $rb"
@@ -60,7 +68,8 @@ echo "==> spinel C generation: $rb"
 # --target=esp32: --cc= the cross gcc, so spinel's popen(-E -dM) probe reads
 # __SIZEOF_POINTER__=4 and infers 32-bit ints (sp_int=long long stays 64).
 if [[ "$mode" == "--target=esp32" || $want_flash -eq 1 || $want_monitor -eq 1 ]]; then
-  "$SPINEL" "$rb" -S --cc="$XGCC" > "$OUT/$base.c"
+  # shellcheck disable=SC2086
+  "$SPINEL" "$rb" -S --cc="$XGCC" ${SPINEL_FLAGS:-} > "$OUT/$base.c"
   echo "==> emitted $OUT/$base.c ($(wc -l < "$OUT/$base.c") lines) -- target=esp32"
   if [[ $want_flash -eq 0 && $want_monitor -eq 0 ]]; then
     exit 0
