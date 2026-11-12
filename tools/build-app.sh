@@ -14,6 +14,7 @@
 #   tools/build-app.sh app/hello.rb --target=esp32 --build    # + copy, idf.py build (no board needed)
 #   tools/build-app.sh app/hello.rb --target=esp32 --flash    # + copy, idf.py build & flash
 #   tools/build-app.sh app/hello.rb --target=esp32 --flash --monitor  # + capture serial output
+#   tools/build-app.sh app/hello.rb --target=rp2350 --monitor  # Pico 2 W (tools/pico-app.sh)
 #
 # Variants (environment, as tools/size-report.sh): SPINEL_SRC (spinel tree),
 # SPINEL_FLAGS (e.g. --no-bigint), SPINEL_PRESET (presets/<name>.defs; build
@@ -43,6 +44,7 @@ while [[ $# -gt 0 ]]; do
     --emit-only)   mode="--emit-only" ;;
     --target=esp32|--target=esp32c3|--target=esp32c6|--target=esp32s3)
                    mode="--target=esp32"; TARGET="${1#--target=}" ;;
+    --target=rp2350) TARGET=rp2350 ;;
     --build)       want_build=1 ;;
     --flash)       want_flash=1 ;;
     --monitor)     want_monitor=1; want_flash=1 ;;
@@ -52,6 +54,17 @@ while [[ $# -gt 0 ]]; do
 done
 base="$(basename "$rb" .rb)"
 mkdir -p "$OUT"
+
+# Raspberry Pi Pico 2 W (RP2350): the Pico SDK firmware lives in
+# firmware-pico/ and has its own build/flash leg.
+if [[ "$TARGET" == rp2350 ]]; then
+  args=()
+  [[ $want_build -eq 1 ]] && args+=(--build)
+  [[ $want_flash -eq 1 ]] && args+=(--flash)
+  [[ $want_monitor -eq 1 ]] && args+=(--monitor)
+  [[ "$mode" == "--emit-only" ]] && { echo "build-app.sh: use --build for rp2350" >&2; exit 2; }
+  exec "$ROOT/tools/pico-app.sh" "$rb" "${args[@]}"
+fi
 
 # The gcc spinel probes for the target ABI (32-bit int inference). Per target:
 XGCC=""

@@ -11,8 +11,9 @@
  *
  * Omitted on purpose: IPv6 structs (AF_INET6 == AF_UNSPEC with LWIP_IPV6
  * off in the default single-at-a-time ESP-IDF config; code that uses them
- * is #ifdef-guarded by the AF_INET6 value mismatch), socketpair() (no
- * lwip counterpart; grep shows no spinel caller), SO_NWRITE (Darwin).
+ * is #ifdef-guarded by the AF_INET6 value mismatch), SO_NWRITE (Darwin).
+ * socketpair() is declared (UNIXSocket.pair calls it) but lwip has no
+ * counterpart: src/sp_esp32_stub.c answers ENOSYS.
  *
  * MSG_DONTROUTE is omitted: lwip does not define it, and sp_io.c guards
  * the only use with #ifdef.
@@ -154,6 +155,7 @@ struct linger {
 
 /* ---- declarations (resolved by lwip at the firmware link) ---------------- */
 int      socket(int domain, int type, int protocol);
+int      socketpair(int domain, int type, int protocol, int sv[2]);
 int      bind(int s, const struct sockaddr *name, socklen_t namelen);
 int      listen(int s, int backlog);
 int      accept(int s, struct sockaddr *addr, socklen_t *addrlen);

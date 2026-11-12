@@ -8,3 +8,4 @@ esp32_c6_devkitc esp32c6 /dev/serial/by-path/pci-0000:00:15.0-usb-0:3.4.2:1.0-po
 m5stickc         esp32   /dev/serial/by-path/pci-0000:00:15.0-usb-0:3.4.1:1.0-port0 115200
 m5sticks3        esp32s3 /dev/serial/by-path/pci-0000:00:15.0-usb-0:3.3:1.0
 m5stamp_c3       esp32c3 /dev/serial/by-path/pci-0000:00:15.0-usb-0:3.2:1.0
+pico2w           rp2350  /dev/serial/by-path/pci-0000:00:15.0-usb-0:3.4.3:1.0

@@ -1,0 +1,6 @@
+# Raspberry Pi RP2040/RP2350 boards and the Debug Probe (USB vendor 2e8a):
+# lets members of plugdev run picotool (BOOTSEL load, flash backup, reboot)
+# and openocd through the Debug Probe without sudo.
+#   sudo cp tools/udev/60-spinel-mote-rp2.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload && sudo udevadm trigger --attr-match=idVendor=2e8a
+SUBSYSTEM=="usb", ATTRS{idVendor}=="2e8a", MODE="0660", GROUP="plugdev", TAG+="uaccess"

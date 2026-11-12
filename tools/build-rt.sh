@@ -10,6 +10,9 @@
 # Usage:
 #   tools/build-rt.sh                # riscv32 (esp32c3), default, needs IDF_PATH
 #   tools/build-rt.sh esp32          # xtensa (classic ESP32, T-Display)
+#   tools/build-rt.sh rp2350-riscv   # RP2350 Hazard3 cores (Pico 2 W), needs
+#                                    # the Pico RISC-V GCC (PICO_TOOLCHAIN_PATH,
+#                                    # default ~/pico/riscv-gcc), not ESP-IDF
 #   ESP_IDF=/path/to/esp-idf tools/build-rt.sh <target>
 #   tools/build-rt.sh --probe        # check the cross libc surface (riscv32)
 #   tools/build-rt.sh esp32 --probe  # check the xtensa cross libc surface
@@ -46,12 +49,22 @@ case "$TARGET" in
   esp32)   GCC_NAME="xtensa-esp32-elf-gcc" ;;
   # ESP32-S3: Xtensa LX7, its own chip-specific driver (same reason as esp32).
   esp32s3) GCC_NAME="xtensa-esp32s3-elf-gcc" ;;
-  *) echo "error: unknown target '$TARGET' (riscv32|riscv32imac|esp32|esp32s3)" >&2; exit 1 ;;
+  # RP2350 in RISC-V mode: Raspberry Pi's own GCC (pico-sdk-tools), the one
+  # the Pico SDK builds the firmware with, so its newlib multilib matches.
+  rp2350-riscv) GCC_NAME="riscv32-pico-elf-gcc" ;;
+  *) echo "error: unknown target '$TARGET' (riscv32|riscv32imac|esp32|esp32s3|rp2350-riscv)" >&2; exit 1 ;;
 esac
 AR_NAME="${GCC_NAME%gcc}ar"   # riscv32-esp-elf-ar / xtensa-esp-elf-ar
 
 # ---- toolchain discovery -------------------------------------------------
-if [[ ! -d "$IDF" ]]; then
+CROSS=""
+if [[ "$TARGET" == rp2350-* ]]; then
+  CROSS="${PICO_TOOLCHAIN_PATH:-$HOME/pico/riscv-gcc}"
+  if [[ ! -x "$CROSS/bin/$GCC_NAME" ]]; then
+    echo "error: $GCC_NAME not found in $CROSS/bin (set PICO_TOOLCHAIN_PATH=...)" >&2
+    exit 1
+  fi
+elif [[ ! -d "$IDF" ]]; then
   echo "error: ESP-IDF not found at $IDF (set ESP_IDF=...)" >&2
   exit 1
 fi
@@ -61,8 +74,7 @@ fi
 # can't shadow the real prefix. Match the EXACT gcc name (pitfall: the xtensa
 # and riscv32 toolchains live side by side under ~/.espressif; a loose
 # '*-esp-elf-gcc' find can pick the wrong one).
-CROSS=""
-for g in $(find "$HOME/.espressif" -maxdepth 6 -type f -name "$GCC_NAME" 2>/dev/null); do
+[[ -z "$CROSS" ]] && for g in $(find "$HOME/.espressif" -maxdepth 6 -type f -name "$GCC_NAME" 2>/dev/null); do
   b="$(dirname "$g")"
   CROSS="$(dirname "$b")"
   [[ -x "$CROSS/bin/$AR_NAME" ]] && break
@@ -157,14 +169,26 @@ if [[ "$TARGET" == "riscv32" ]]; then
   ARCH_FLAGS="-march=rv32imc_zicsr_zifencei -mabi=ilp32"
 elif [[ "$TARGET" == "riscv32imac" ]]; then
   ARCH_FLAGS="-march=rv32imac_zicsr_zifencei -mabi=ilp32"
+elif [[ "$TARGET" == "rp2350-riscv" ]]; then
+  # The Pico SDK's own flags for the Hazard3 cores (RV32IMAC + Zba/Zbb/Zbs/
+  # Zbkb/Zcb/Zcmp); -mstrict-align as the SDK, which builds everything so.
+  ARCH_FLAGS="-mcpu=hazard3-rp2350 -mstrict-align"
 elif [[ "$TARGET" == "esp32" || "$TARGET" == "esp32s3" ]]; then
   ARCH_FLAGS="-mlongcalls"
 fi
 
+# Per-target overlay: shim/<platform>/include goes ahead of shim/esp32's
+# headers and adds only what that SDK's newlib lacks (shim/rp2350/).
+SHIM_OVERLAY=""
+PLAT_STUB=""
+if [[ "$TARGET" == rp2350-* ]]; then
+  SHIM_OVERLAY="-I$ROOT/shim/rp2350/include -DSP_SHIM_RP2350"
+  PLAT_STUB="$ROOT/shim/rp2350/src/sp_rp2350_stub.c"
+fi
 CFLAGS_RT="-O2 -ffunction-sections -fdata-sections -ffp-contract=off \
   -Wno-all \
   $ARCH_FLAGS \
-  -I$SHIM/include -I$VENDOR/lib -I$VENDOR/lib/regexp -I$VENDOR/lib/regexp/shim \
+  $SHIM_OVERLAY -I$SHIM/include -I$VENDOR/lib -I$VENDOR/lib/regexp -I$VENDOR/lib/regexp/shim \
   -DSP_NO_SIGNALS -D__ESP32_SHIM__ $SP_SZ ${RT_DEFS:-}"
 echo "VENDOR = $VENDOR"
 echo "OUT = $OUT  (preset $PRESET${RT_DEFS:+, RT_DEFS: $RT_DEFS})"
@@ -206,6 +230,7 @@ for m in $RT_MEMBERS; do compile "$VENDOR/lib/$m.c" "$OUT/$m.o"; done
 
 echo "== compiling shim"
 compile "$SHIM/src/sp_esp32_stub.c" "$OUT/sp_esp32_stub.o"
+[[ -n "$PLAT_STUB" ]] && compile "$PLAT_STUB" "$OUT/$(basename "${PLAT_STUB%.c}").o"
 # Coroutine switch: RV32 uses src/ucontext.S; Xtensa has a windowed register
 # ABI and needs its own implementation. ucontext_xtensa.S is NOT YET WRITTEN
 # (see docs/plan-xtensa-port.md): no fiber-using app is compiled for esp32, so

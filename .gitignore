@@ -25,3 +25,6 @@ firmware/main/wifi_secrets.h
 firmware/managed_components/
 firmware/dependencies.lock
 boards.local
+# Pico SDK firmware: generated app and build tree
+firmware-pico/main/app.c
+firmware-pico/build/
