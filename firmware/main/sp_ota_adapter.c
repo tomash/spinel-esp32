@@ -12,6 +12,7 @@
  * (same convention as sp_app_adapter.c callers / app FFI funcs).
  */
 
+#include "net.h"
 #include "esp_ota_ops.h"
 #include "esp_partition.h"
 #include "esp_app_format.h"
@@ -27,12 +28,12 @@ static esp_ota_handle_t s_ota_handle;
 static const esp_partition_t *s_ota_target;
 static int s_ota_in_progress;
 
-const char *esp32_ota_partition_name(void)
+const char *ota_partition_name(void)
 {
     return s_ota_target ? s_ota_target->label : "(none)";
 }
 
-int esp32_ota_begin(void)
+int ota_begin(void)
 {
     if (s_ota_in_progress) {
         /* A previous download died mid-stream without ota_end/abort:
@@ -65,7 +66,7 @@ int esp32_ota_begin(void)
 }
 
 /* Version guard from native_ota_example, split out so the Ruby download
-   loop can call it on the first bytes BEFORE esp32_ota_begin: buf holds
+   loop can call it on the first bytes BEFORE ota_begin: buf holds
    the first >= 80 bytes of the image. Layout there: 24-byte image header,
    8-byte segment header, then the esp_app_desc_t (216 bytes) whose
    magic_word sits at +0 and version[32] at +16 (image offset 48..80).
@@ -75,7 +76,7 @@ int esp32_ota_begin(void)
    incoming version matches (a) the running image -- pointless reflash,
    or (b) esp_ota_get_last_invalid_partition() -- a version that already
    failed to prove life after boot. Return 0 = proceed; <0 = refuse. */
-int esp32_ota_check_version(const uint8_t *buf, size_t len)
+int ota_check_version(const uint8_t *buf, size_t len)
 {
     const size_t off_desc = sizeof(esp_image_header_t) + sizeof(esp_image_segment_header_t);
     const size_t off_ver = off_desc + 16;   /* skip magic+secure_version+reserv1 */
@@ -111,7 +112,7 @@ int esp32_ota_check_version(const uint8_t *buf, size_t len)
     return 0;
 }
 
-int esp32_ota_write(const uint8_t *buf, size_t len)
+int ota_write(const uint8_t *buf, size_t len)
 {
     if (!s_ota_in_progress) return -1;
     if (buf == NULL || len == 0) return -2;
@@ -126,7 +127,7 @@ int esp32_ota_write(const uint8_t *buf, size_t len)
 /* abort != 0 -> abandon the download (bad image / truncated stream).
    abort == 0 -> finalize; the new image boots only after the next
    esp_restart, and only marks itself valid once it has proven life. */
-int esp32_ota_end(int abort)
+int ota_end(int abort)
 {
     if (!s_ota_in_progress) return -1;
     s_ota_in_progress = 0;
@@ -155,7 +156,7 @@ int esp32_ota_end(int abort)
 
 /* Which slot is running: 0 = ota_0, 1 = ota_1, -1 = not an OTA slot
    (factory -- only true before the one-time re-partition reflash). */
-int esp32_ota_running_slot(void)
+int ota_running_slot(void)
 {
     const esp_partition_t *run = esp_ota_get_running_partition();
     const esp_partition_t *o0 = esp_partition_find_first(
@@ -171,14 +172,14 @@ int esp32_ota_running_slot(void)
    booted slot calls this after the status server answered one request.
    No-op semantics after the first call (bootloader clamps to the same
    state it is already in). */
-int esp32_ota_mark_valid(void)
+int ota_mark_valid(void)
 {
     esp_ota_mark_app_valid_cancel_rollback();
     printf("OTA: running image marked valid (rollback cancelled)\n");
     return 0;
 }
 
-int esp32_ota_reboot(void)
+int ota_reboot(void)
 {
     printf("OTA: rebooting now\n");
     fflush(stdout);

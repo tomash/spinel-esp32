@@ -47,7 +47,8 @@ int clock_getres(clockid_t clk, struct timespec *res) {
     return 0;
 }
 
-int nanosleep(const struct timespec *req, struct timespec *rem) {
+/* weak: firmware with an RTOS supplies a blocking one (firmware-pico) */
+__attribute__((weak)) int nanosleep(const struct timespec *req, struct timespec *rem) {
     if (!req || req->tv_nsec < 0 || req->tv_nsec >= 1000000000L) { errno = EINVAL; return -1; }
     sleep_us((uint64_t)req->tv_sec * 1000000u + (uint64_t)req->tv_nsec / 1000u);
     if (rem) { rem->tv_sec = 0; rem->tv_nsec = 0; }

@@ -12,6 +12,7 @@
  * Everything else on board.h (IMU, IR, audio, display) answers -1 / 0.
  */
 #include "board.h"
+#include "sp_pico.h"
 #include "pico/stdlib.h"
 #include "pico/cyw43_arch.h"
 #include "hardware/adc.h"
@@ -20,13 +21,7 @@
 #include "hardware/structs/ioqspi.h"
 #include "hardware/structs/sio.h"
 
-static int s_cyw43 = 0;   /* 0 not tried, 1 up, <0 init error */
-
-static int pico2w_cyw43_up(void)
-{
-    if (s_cyw43 == 0) s_cyw43 = cyw43_arch_init() == 0 ? 1 : -1;
-    return s_cyw43 == 1 ? 0 : -1;
-}
+#define pico2w_cyw43_up sp_pico_cyw43_up   /* net_pico.c: shared with WiFi */
 
 int board_init(void) { return 0; }
 const char *board_name(void) { return "Pico 2 W (RP2350, RISC-V)"; }
@@ -97,3 +92,14 @@ int board_mic_level(int ms) { (void)ms; return -1; }
 int board_has_lcd(void) { return 0; }
 const board_display_t *board_display(void) { return 0; }
 int board_display_power(int on) { (void)on; return -1; }
+
+/* The T-Display panel driver's API (firmware/main/tdisplay.c on ESP), which
+ * apps such as wifi_status declare and call only when board_has_lcd() says
+ * so: no panel here. */
+int esp32_display_init(void) { return -1; }
+int esp32_display_set_orientation(int o) { (void)o; return -1; }
+int esp32_display_width(void) { return 0; }
+int esp32_display_height(void) { return 0; }
+int esp32_display_clear(int c) { (void)c; return -1; }
+int esp32_display_rect(int x, int y, int w, int h, int c, int fill) { (void)x; (void)y; (void)w; (void)h; (void)c; (void)fill; return -1; }
+int esp32_display_text(const char *s, int x, int y, int fg, int bg, int scale) { (void)s; (void)x; (void)y; (void)fg; (void)bg; (void)scale; return -1; }

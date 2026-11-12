@@ -337,21 +337,21 @@ module ESP32
 
     /* ---- M6: OTA flash-write adapters (sp_ota_adapter.c) ----
        Ruby owns the whole download protocol; C only owns the flash
-       machinery. esp32_ota_write takes the chunk buffer as binstr: the
+       machinery. ota_write takes the chunk buffer as binstr: the
        bridge hands the C side the String's own bytes plus the exact
        length published in sp_ffi_bin_len (the read just before it set
        that global for its :binstr answer), so NUL bytes inside a 4 KB
        chunk survive -- strlen would truncate the image at its first
        0x00 byte. The chunk String is the out-buffer of readpartial's
        (n, buf) form: each refill reuses the same allocation. */
-    const char *esp32_ota_partition_name(void);
-    int esp32_ota_begin(void);
-    int esp32_ota_check_version(const uint8_t *buf, size_t len);
-    int esp32_ota_write(const uint8_t *buf, size_t len);
-    int esp32_ota_end(int abort);
-    int esp32_ota_running_slot(void);
-    int esp32_ota_mark_valid(void);
-    int esp32_ota_reboot(void);
+    const char *ota_partition_name(void);
+    int ota_begin(void);
+    int ota_check_version(const uint8_t *buf, size_t len);
+    int ota_write(const uint8_t *buf, size_t len);
+    int ota_end(int abort);
+    int ota_running_slot(void);
+    int ota_mark_valid(void);
+    int ota_reboot(void);
   C
 
   # LED (kept for reuse across demos)
@@ -426,14 +426,14 @@ module ESP32
   ffi_func :esp32_gc_tune, [], :int
   ffi_func :esp32_gc_step, [], :int
   # M6: OTA flash machinery (C side owns esp_ota_*; Ruby owns the protocol)
-  ffi_func :esp32_ota_partition_name, [], :str
-  ffi_func :esp32_ota_begin,          [], :int
-  ffi_func :esp32_ota_check_version,  [:binstr, :size_t], :int
-  ffi_func :esp32_ota_write,          [:binstr, :size_t], :int
-  ffi_func :esp32_ota_end,            [:int], :int
-  ffi_func :esp32_ota_running_slot,   [], :int
-  ffi_func :esp32_ota_mark_valid,     [], :int
-  ffi_func :esp32_ota_reboot,         [], :int
+  ffi_func :ota_partition_name, [], :str
+  ffi_func :ota_begin,          [], :int
+  ffi_func :ota_check_version,  [:binstr, :size_t], :int
+  ffi_func :ota_write,          [:binstr, :size_t], :int
+  ffi_func :ota_end,            [:int], :int
+  ffi_func :ota_running_slot,   [], :int
+  ffi_func :ota_mark_valid,     [], :int
+  ffi_func :ota_reboot,         [], :int
 end
 
 # ---- T-Display ST7789 (driver: firmware/main/tdisplay.c) ----
@@ -651,7 +651,7 @@ end
 # (plain HTTP; no TLS in scope). The request is HTTP/1.0-shaped, we
 # parse Content-Length, verify the 0xE9 image magic in the first chunk
 # BEFORE ota_begin, and hand each chunk to the C adapter via one
-# esp32_ota_write(:binstr) call per chunk.
+# ota_write(:binstr) call per chunk.
 #
 # Connect goes through the 1-arg Socket#connect_nonblock(sockaddr) path,
 # NOT TCPSocket.new(host, port): sp_io_fdopen_sock hardcodes
@@ -792,17 +792,17 @@ def ota_download(host, port, path, force: false)
         # running version, or one that previously failed to prove life
         # (last-invalid partition). Runs on the first bytes, before
         # ota_begin, so a refused image never touches flash.
-        rc = ESP32.esp32_ota_check_version(buf, buf.bytesize)
+        rc = ESP32.ota_check_version(buf, buf.bytesize)
         raise "version guard refused image (rc #{rc})" if rc != 0 && !force
         first = false
         got = buf.bytesize
       end
       if !begun
-        rc = ESP32.esp32_ota_begin()
+        rc = ESP32.ota_begin()
         raise "ota_begin failed (#{rc})" if rc != 0
         begun = true
       end
-      rc = ESP32.esp32_ota_write(buf, got)
+      rc = ESP32.ota_write(buf, got)
       raise "ota_write failed (#{rc})" if rc != 0
       written += got
       break if total && written >= total
@@ -810,19 +810,19 @@ def ota_download(host, port, path, force: false)
     raise "truncated: got #{written}, expected #{total}" if total && written < total
     # got == 0 (EOF) without a known total: accept, ota_end validates
     # the trailing image checksum anyway.
-    rc = ESP32.esp32_ota_end(0)
+    rc = ESP32.ota_end(0)
     raise "ota_end failed (#{rc})" if rc != 0
-    { "slot" => ESP32.esp32_ota_partition_name.delete("\0"), "phase" => "sealed",
+    { "slot" => ESP32.ota_partition_name.delete("\0"), "phase" => "sealed",
       "progress" => written, "error" => nil }
   rescue => e
     if begun
       begin
-        ESP32.esp32_ota_end(1)   # abort: leave the old slot running
+        ESP32.ota_end(1)   # abort: leave the old slot running
       rescue StandardError
         nil
       end
     end
-    { "slot" => begun ? ESP32.esp32_ota_partition_name.delete("\0") : nil,
+    { "slot" => begun ? ESP32.ota_partition_name.delete("\0") : nil,
       "phase" => "failed", "progress" => written, "error" => "#{e.class}: #{e.message}" }
   ensure
     begin
@@ -863,7 +863,7 @@ loop do
       end
     end
     rssi = ESP32.esp32_wifi_ap_info(ssid_buf, 33, chan_buf)
-    run_slot = ESP32.esp32_ota_running_slot()
+    run_slot = ESP32.ota_running_slot()
     slot_s = run_slot == 0 ? "ota_0" : run_slot == 1 ? "ota_1" : "factory"
     if rssi == -999
       rssi = nil
@@ -896,7 +896,7 @@ loop do
     unless ota_valid_latch
       ota_valid_latch = true
       begin
-        ESP32.esp32_ota_mark_valid()
+        ESP32.ota_mark_valid()
       rescue => e
         puts "[#{loop_count}] ota mark_valid error: #{e.class} #{e.message}"
       end
@@ -938,7 +938,7 @@ loop do
       puts "[#{loop_count}] served: #{req.split("\r\n")[0]}"
       next
     elsif path.start_with?("/ota/status")
-      slot = ESP32.esp32_ota_running_slot()
+      slot = ESP32.ota_running_slot()
       slot_s = slot == 0 ? "ota_0" : slot == 1 ? "ota_1" : "factory"
       st = ota_state || { "phase" => "idle", "progress" => 0, "error" => nil, "slot" => nil }
       body = "running slot: #{slot_s}\nlast ota: #{st["phase"]} " \
@@ -962,7 +962,7 @@ loop do
       end
       puts "[#{loop_count}] OTA reboot requested"
       ESP32.esp32_delay_ms(100)
-      ESP32.esp32_ota_reboot()
+      ESP32.ota_reboot()
       next
     end
 

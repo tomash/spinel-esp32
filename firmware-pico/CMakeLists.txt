@@ -18,6 +18,9 @@ set(PICO_PLATFORM rp2350-riscv CACHE STRING "Pico SDK platform")
 include($ENV{PICO_SDK_PATH}/external/pico_sdk_import.cmake)
 project(spinel_mote_pico C CXX ASM)
 pico_sdk_init()
+# FreeRTOS (Raspberry Pi's kernel fork; FREERTOS_KERNEL_PATH, default: next
+# to the SDK) -- lwIP's socket API needs an RTOS, see config/FreeRTOSConfig.h.
+include($ENV{PICO_SDK_PATH}/../FreeRTOS-Kernel/portable/ThirdParty/GCC/RP2350_RISC-V/FreeRTOS_Kernel_import.cmake)
 
 set(SPINEL_ROOT ${CMAKE_CURRENT_LIST_DIR}/..)
 if(DEFINED ENV{SPINEL_SRC} AND NOT "$ENV{SPINEL_SRC}" STREQUAL "")
@@ -64,12 +67,15 @@ message(STATUS "spinel: ${PICO_PLATFORM} RT archive: ${SPINEL_RT_ARCHIVE} preset
 
 add_executable(spinel_mote_app
     main/sp_pico_adapter.c
-    main/sp_pico_stack.S
+    main/sp_pico_sockets.c
+    main/net_pico.c
     boards/${SPINEL_BOARD}.c
     main/app.c)
 
-# board.h is shared with the ESP firmware.
+# board.h and net.h (and wifi_secrets.h) are shared with the ESP firmware.
 target_include_directories(spinel_mote_app PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}/config
+    ${CMAKE_CURRENT_LIST_DIR}/main
     ${SPINEL_ROOT}/firmware/main
     ${CMAKE_CURRENT_LIST_DIR}/boards)
 
@@ -99,7 +105,10 @@ pico_enable_stdio_uart(spinel_mote_app 1)
 
 target_link_libraries(spinel_mote_app
     pico_stdlib
-    pico_cyw43_arch_none
+    pico_cyw43_arch_lwip_sys_freertos
+    pico_lwip_mdns
+    pico_lwip_sntp
+    FreeRTOS-Kernel-Heap3
     hardware_adc
     ${SPINEL_RT_ARCHIVE})
 target_link_options(spinel_mote_app PRIVATE -Wl,--gc-sections)
