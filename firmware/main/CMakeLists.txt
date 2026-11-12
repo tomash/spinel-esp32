@@ -26,7 +26,7 @@ idf_component_register(
     # M5a: mdns is the managed component espressif/mdns (idf_component.yml)
     # -- not in the IDF v5.5 component tree; the component manager fetches
     # it at configure time into build/managed_components.
-    REQUIRES esp_wifi nvs_flash esp_netif esp_event esp_adc esp_driver_gpio esp_driver_i2c esp_driver_rmt esp_driver_i2s esp_lcd lwip mdns app_update led_strip ${_spinel_extra_requires}
+    REQUIRES esp_wifi nvs_flash esp_netif esp_event esp_adc esp_driver_gpio esp_driver_i2c esp_driver_rmt esp_driver_i2s esp_lcd esp_timer lwip mdns app_update led_strip ${_spinel_extra_requires}
 )
 
 # Link the prebuilt spinel RT after this component's objects. Imported

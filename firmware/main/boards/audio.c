@@ -15,6 +15,7 @@
 #include <stdlib.h>
 #include "audio.h"
 #include "board_common.h"
+#include "soc/soc_caps.h"
 #include "driver/i2s_std.h"
 #include "driver/i2s_pdm.h"
 #include "freertos/FreeRTOS.h"
@@ -116,18 +117,21 @@ int es8311_stop(void) {
 static int rms16(i2s_chan_handle_t h, int rate, int ms, int stride) {
     int16_t buf[512];
     int total = rate * ms / 1000 * stride, got = 0;
-    double acc = 0; long n = 0;
-    /* drop the first 100 ms: DC settling */
+    double acc = 0, sum = 0; long n = 0;
+    /* drop the first 100 ms: DC settling. The level is the AC part only
+       (standard deviation): PDM mics carry a large DC offset. */
     int skip = rate / 10 * stride;
     while (got < total + skip) {
         size_t r = 0;
         if (i2s_channel_read(h, buf, sizeof buf, &r, 1000) != ESP_OK) break;
         int k = r / 2;
         for (int i = 0; i < k; i += stride) {
-            if (got++ >= skip) { acc += (double)buf[i] * buf[i]; n++; }
+            if (got++ >= skip) { acc += (double)buf[i] * buf[i]; sum += buf[i]; n++; }
         }
     }
-    return n ? (int)sqrt(acc / n) : -3;
+    if (!n) return -3;
+    double mean = sum / n, var = acc / n - mean * mean;
+    return var > 0 ? (int)sqrt(var) : 0;
 }
 
 int es8311_mic_level(int ms) {
@@ -135,7 +139,11 @@ int es8311_mic_level(int ms) {
     const uint8_t on[] = { 0x00,0x80, 0x01,0xBA, 0x02,0x18, 0x0D,0x01, 0x0E,0x02,
                            0x14,0x10, 0x17,0xFF, 0x1C,0x6A, ES_END };
     const uint8_t off[] = { 0x0D,0xFC, 0x0E,0x6A, 0x00,0x00, ES_END };
+#if SOC_I2S_NUM > 1
     i2s_chan_handle_t h = std_chan(I2S_NUM_1, 0, 16000, I2S_GPIO_UNUSED, 16);
+#else
+    i2s_chan_handle_t h = NULL;           /* single-I2S chips: no codec mic */
+#endif
     if (!h) return -2;
     es8311_seq(on);
     int lvl = rms16(h, 16000, ms, 2);     /* stereo slots: take the left */
