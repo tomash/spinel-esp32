@@ -19,6 +19,7 @@
 #   SPINEL_SRC=/path/to/spinel   spinel source tree (default vendor/spinel)
 #   RT_SUFFIX=-small             output dir build/rt-<target><suffix>
 #   RT_DEFS="-DSP_NO_ALLOC_REPORT ..."  extra -D flags for every member
+#   RT_OPT=-Os                   optimisation level (default -O2)
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 IDF="${ESP_IDF:-$HOME/esp/esp-idf-v5.5}"
@@ -161,7 +162,7 @@ elif [[ "$TARGET" == "esp32" || "$TARGET" == "esp32s3" ]]; then
   ARCH_FLAGS="-mlongcalls"
 fi
 
-CFLAGS_RT="-O2 -ffunction-sections -fdata-sections -ffp-contract=off \
+CFLAGS_RT="${RT_OPT:--O2} -ffunction-sections -fdata-sections -ffp-contract=off \
   -Wno-all \
   $ARCH_FLAGS \
   -I$SHIM/include -I$VENDOR/lib -I$VENDOR/lib/regexp -I$VENDOR/lib/regexp/shim \
