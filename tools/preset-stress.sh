@@ -15,18 +15,24 @@
 #
 # Usage: SPINEL_SRC=~/spinel-size-floor tools/preset-stress.sh small [-jN]
 #        ONLY='fiber_|exception_class' ... (re-check a subset)
+#        EXTRA_DEFS="-DSP_NO_SLAB -DSP_NO_GC_PHASES"   switches beyond the preset,
+#                   on both the runtime and the programs; TAG names the run
+#        SPINEL_BIN=...  compiler binary (default $SPINEL_SRC/spinel), and
+#        RT_BASE=...     archive whose non-member objects are reused (default
+#                        $SPINEL_SRC/lib/libspinel_rt.a): for a tree whose own
+#                        build is stale, take both from a build at the same commit
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SRC="${SPINEL_SRC:-$ROOT/vendor/spinel}"
 PRESET="${1:-small}"
 JOBS="${2:--j2}"; JOBS="${JOBS#-j}"
-DEFS="$(grep -v '^[[:space:]]*\(#\|$\)' "$ROOT/presets/$PRESET.defs" | sed 's/^[[:space:]]*/-D/' | tr '\n' ' ')"
-SPINEL_BIN="$SRC/bin/spinel"; [[ -x "$SPINEL_BIN" ]] || SPINEL_BIN="$SRC/spinel"
-WORK="$ROOT/build/preset-stress-$PRESET"
+DEFS="$(grep -v '^[[:space:]]*\(#\|$\)' "$ROOT/presets/$PRESET.defs" | sed 's/^[[:space:]]*/-D/' | tr '\n' ' ') ${EXTRA_DEFS:-}"
+if [[ -z "${SPINEL_BIN:-}" ]]; then SPINEL_BIN="$SRC/bin/spinel"; [[ -x "$SPINEL_BIN" ]] || SPINEL_BIN="$SRC/spinel"; fi
+WORK="$ROOT/build/preset-stress-$PRESET${TAG:+-$TAG}"
 rm -rf "$WORK"; mkdir -p "$WORK/rt" "$WORK/t"
 COPT="-O1 -DSP_ONE_STRING -Wno-all -ffunction-sections -fdata-sections -ffp-contract=off"
 echo "==> host runtime ($PRESET): $DEFS"
-cp "$SRC/lib/libspinel_rt.a" "$WORK/rt/libspinel_rt.a"
+cp "${RT_BASE:-$SRC/lib/libspinel_rt.a}" "$WORK/rt/libspinel_rt.a"
 members="$(sed -n 's/^RT_MEMBERS = //p' "$SRC/Makefile")"
 # shellcheck disable=SC2086
 printf '%s\n' $members | xargs -P "$JOBS" -I{} \

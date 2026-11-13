@@ -121,9 +121,25 @@ malloc. The switch says so at compile time: `sp_slab_on` and
 `sp_slab_owns()` are constant 0 outside `sp_slab.c`, the entry points the
 collector calls unconditionally become inline stubs with their slab-off
 behaviour, and the allocation front skips its slab fast path. About 13 KB
-of flash and 2.5 KB of RAM. Not yet verified on the host GC torture corpus
-(`tools/preset-stress.sh` with `-DSP_NO_SLAB`), which has to pass before
-it goes upstream.
+of flash and 2.5 KB of RAM.
+
+**Verified on the host GC torture corpus** (2026-11-13):
+`tools/preset-stress.sh small` with
+`EXTRA_DEFS="-DSP_NO_SLAB -DSP_NO_GC_PHASES"`, the `mcu-trim` tree (which
+also carries the fixed-point minor cadence), compiler and base archive from
+the vendored build at the same commit: **721 pass, 1 fail, 61 skip** (783
+runs). The one failure, `gc_ivar_set_receiver_root` in gc-minor mode, is an
+upstream bug, not the switch: it fails the same way on the untouched
+vendored tree with nothing but `SPINEL_GC_SLAB=0`, and passes with the slab
+on. Cause: with the slab off, allocations come from per-class header pools,
+and `sp_gc_pool_relink` kept a dead object's `frozen` bit, so the next
+object of a class that reused a frozen object's header came out frozen.
+That affects every board running spinel today (the slab is off on ESP32
+too). Fix on spinel branch `fix-pool-frozen` (`39c155f8a`, clears `frozen`
+and `aged` on relink), cherry-picked into `mcu-trim`; with it the test
+passes in all three modes, and a targeted re-run (pools, finalizers, frozen
+objects, ObjectSpace, fibers, exceptions, Struct, Proc: 126 runs) is 111
+pass, 0 fail, 15 skip.
 
 ### What is left in blink.rb (42.8 KB)
 
