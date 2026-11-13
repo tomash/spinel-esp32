@@ -82,7 +82,7 @@ Verify:
 
 ```bash
 vendor/spinel/bin/spinel --version
-# spinel 2026.09.12+16953 (ca4b6ec8f) [...]
+# spinel 2026.10.25+4859 (0e124f742) [...]
 ```
 
 ### 3. Install ESP-IDF (the cross toolchain)
@@ -389,6 +389,25 @@ run again:
   them (scheduler tables for 256 workers, 16 KB read buffers per socket), and
   with the old sizes `wifi_status` had ~33 KB free and its OTA transfer died
   with `NoMemoryError`. Now it idles at ~90 KB free.
+
+Moving on to `0e124f742` (2026-11-13, ~750 upstream commits) took one change
+here and one upstream:
+
+- Upstream's Makefile no longer leaves a `./spinel` link to `bin/spinel`, so
+  `tools/build-app.sh`, `tools/size-report.sh` and `tools/preset-stress.sh`
+  call `bin/spinel` (falling back to the old path for an older tree).
+- An explicit-receiver call like `ESP32.board_name` hit the private top-level
+  `def board_name` instead of the module's `ffi_func` (a regression from
+  [matz/spinel#11652](https://github.com/matz/spinel/pull/11652), bisected on
+  the boards: `wifi_status` raised `NoMethodError` at boot on the StickS3 and
+  on the first request on the C3). Fixed upstream in
+  [matz/spinel#11773](https://github.com/matz/spinel/pull/11773). The same
+  move also brings [#11751](https://github.com/matz/spinel/pull/11751): with
+  the slab off, as on every board, a dead frozen object's header made the next
+  object of its class frozen.
+
+Verified on the M5Stamp C3 and M5StickS3: `wifi_status` boots, joins WiFi,
+announces mDNS and serves its page.
 
 ### Capacity presets
 

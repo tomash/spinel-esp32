@@ -21,6 +21,7 @@ SRC="${SPINEL_SRC:-$ROOT/vendor/spinel}"
 PRESET="${1:-small}"
 JOBS="${2:--j2}"; JOBS="${JOBS#-j}"
 DEFS="$(grep -v '^[[:space:]]*\(#\|$\)' "$ROOT/presets/$PRESET.defs" | sed 's/^[[:space:]]*/-D/' | tr '\n' ' ')"
+SPINEL_BIN="$SRC/bin/spinel"; [[ -x "$SPINEL_BIN" ]] || SPINEL_BIN="$SRC/spinel"
 WORK="$ROOT/build/preset-stress-$PRESET"
 rm -rf "$WORK"; mkdir -p "$WORK/rt" "$WORK/t"
 COPT="-O1 -DSP_ONE_STRING -Wno-all -ffunction-sections -fdata-sections -ffp-contract=off"
@@ -35,11 +36,11 @@ printf '%s\n' $members | xargs -P "$JOBS" -I{} \
 run_one() { # run_one <src.rb> <mode>
   local src="$1" mode="$2" bn; bn="$(basename "$src" .rb)-$mode"
   local d="$WORK/t/$bn"; mkdir -p "$d"
-  if ! "$SRC/spinel" "$src" -S > "$d/t.c" 2> "$d/cc.out"; then echo "SKIP $bn (spinel refused)"; return 0; fi
+  if ! "$SPINEL_BIN" "$src" -S > "$d/t.c" 2> "$d/cc.out"; then echo "SKIP $bn (spinel refused)"; return 0; fi
   # Bundled packages the program requires (`link <pkg>.o` in the driver's
   # build plan): rebuilt from their .c with the preset, as the runtime is.
   local extra="" o plan pdefs
-  plan="$("$SRC/spinel" "$src" --print-build 2>/dev/null)"
+  plan="$("$SPINEL_BIN" "$src" --print-build 2>/dev/null)"
   # The threaded runtime (libspinel_rt_mt.a) is not what an MCU links: a
   # program that needs it is out of scope here, not a failure.
   if grep -q '^define -DSP_THREADS$' <<<"$plan"; then echo "SKIP $bn (needs the threaded runtime)"; return 0; fi
@@ -67,7 +68,7 @@ run_one() { # run_one <src.rb> <mode>
   fi
   echo "PASS $bn"
 }
-export -f run_one; export SRC WORK COPT DEFS
+export -f run_one; export SRC WORK COPT DEFS SPINEL_BIN
 
 # ONLY=<regex> restricts the run to matching test names (re-checking failures).
 { for f in $(grep -l '^# spinel: gc-stress$' "$SRC"/test/*.rb); do echo "$f stress0"; echo "$f stress1"; done
