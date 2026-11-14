@@ -62,7 +62,25 @@ rest of the 20 KB).
 | 1b LTO (on top of 1a) | 53 392 | 64 400 | 12 584 |
 | 2 tiny stdio + no file system (on 1a) | 40 352 | 56 896 | 14 080 |
 | 1b LTO again (on 2) | 48 256 | 59 328 | 12 008 |
-| 4a `SP_NO_SLAB` (on 2) | **27 452** | **43 840** | **11 276** |
+| 4a `SP_NO_SLAB` (on 2) | 27 452 | 43 840 | 11 276 |
+| pin move to upstream `0e124f742` (same flags) | 34 268 | 48 376 | 12 692 |
+| packed builtin class table, id caches sized to the ids | **30 068** | **44 180** | **12 116** |
+
+### Pin move to `0e124f742` (2026-11-14)
+
+Same flags, `mcu-trim` rebased: empty grew 6.8 KB, blink 4.5 KB, RAM
+1.4 KB, all in `sp_exc`. Upstream `ff6d831c2` and `4219e18e7` gave
+exceptions a builtin class id and moved the class table by name into
+`sp_exc.c`: the table stored each name in a fixed 48-byte row (122 rows,
+6.3 KB of rodata for 1.6 KB of names), and three id-indexed caches came
+with it (1.4 KB of RAM, over half of it for ids no class has). Blink
+partly offset the flash growth: `sp_poly_cold` fell from 5.0 KB to 1.6 KB.
+
+`mcu-trim` `0e4218b13` packs the names into one struct of exact-size char
+arrays with a 4-byte `{offset, id}` row (still no load-time relocation),
+and indexes the caches by `-id - 100` over the 96 ids in use. 4.2 KB of
+flash and 576 B of RAM; 157 exception and class tests pass on the host.
+Not MCU-specific, so it is a candidate upstream PR.
 
 ### 0. mruby/c baseline (measured)
 

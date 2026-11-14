@@ -13,7 +13,7 @@
 # Environment:
 #   RT_DIR=build/rt-riscv32imac-small-os     runtime archive dir
 #   SPINEL_SRC=...                           spinel tree (spinel binary + lib/)
-#   SPINEL_BIN=...                           spinel compiler (default $SPINEL_SRC/spinel)
+#   SPINEL_BIN=...                           spinel compiler (default $SPINEL_SRC/bin/spinel)
 #   SPINEL_PRESET=small                      presets/<name>.defs for the app TU
 #   SPINEL_FLAGS=--no-bigint                 extra spinel flags
 #   APP_OPT=-Os                              app TU optimisation
@@ -25,7 +25,8 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SPINEL_SRC="${SPINEL_SRC:-$ROOT/vendor/spinel}"
-SPINEL_BIN="${SPINEL_BIN:-$SPINEL_SRC/spinel}"   # compiler binary (may come from another tree at the same commit)
+# compiler binary (may come from another tree at the same commit); bin/spinel since 0e124f742
+if [[ -z "${SPINEL_BIN:-}" ]]; then SPINEL_BIN="$SPINEL_SRC/bin/spinel"; [[ -x "$SPINEL_BIN" ]] || SPINEL_BIN="$SPINEL_SRC/spinel"; fi
 RT_DIR="${RT_DIR:-$ROOT/build/rt-riscv32imac-small-os}"
 PRESET="${SPINEL_PRESET:-small}"
 FLAGS="${SPINEL_FLAGS:---no-bigint}"
