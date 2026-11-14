@@ -21,7 +21,8 @@
 # variants reconfigures firmware/build: run `idf.py fullclean` there first.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-SPINEL="${SPINEL_SRC:-$ROOT/vendor/spinel}/spinel"
+_sp_src="${SPINEL_SRC:-$ROOT/vendor/spinel}"
+SPINEL="$_sp_src/bin/spinel"; [[ -x "$SPINEL" ]] || SPINEL="$_sp_src/spinel"   # bin/ since upstream dropped the ./spinel link
 OUT="$ROOT/build"
 IDF_EXPORT="$HOME/esp/esp-idf-v5.5/export.sh"
 # Board targets: esp32c3 (T-OI Plus, /dev/ttyUSB0, default) and esp32

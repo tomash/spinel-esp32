@@ -22,7 +22,8 @@
 #   SPINEL_APP_DEFS="SP_NO_ALLOC_REPORT"   extra app TU defines
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-SPINEL="${SPINEL_SRC:-$ROOT/vendor/spinel}/spinel"
+_sp_src="${SPINEL_SRC:-$ROOT/vendor/spinel}"
+SPINEL="$_sp_src/bin/spinel"; [[ -x "$SPINEL" ]] || SPINEL="$_sp_src/spinel"   # bin/ since upstream dropped the ./spinel link
 VSUF="${VARIANT:+-$VARIANT}"
 IDF_EXPORT="$HOME/esp/esp-idf-v5.5/export.sh"
 TARGET="esp32c3"
